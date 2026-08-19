@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: damoyeo
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/damoyeo}
+    username: ${DB_USERNAME:damoyeo}
+    password: ${DB_PASSWORD:damoyeo}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
