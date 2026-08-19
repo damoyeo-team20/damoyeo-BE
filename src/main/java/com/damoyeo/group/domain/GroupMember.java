@@ -37,10 +37,6 @@ public class GroupMember extends BaseEntity {
     @Column(nullable = false, length = 20)
     private GroupMemberRole role;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private GroupMemberStatus status;
-
     @Column(name = "joined_at")
     private Instant joinedAt;
 
@@ -52,7 +48,15 @@ public class GroupMember extends BaseEntity {
         member.group = group;
         member.userId = userId;
         member.role = GroupMemberRole.HOST;
-        member.status = GroupMemberStatus.JOINED;
+        member.joinedAt = Instant.now();
+        return member;
+    }
+
+    public static GroupMember member(MeetingGroup group, long userId) {
+        GroupMember member = new GroupMember();
+        member.group = group;
+        member.userId = userId;
+        member.role = GroupMemberRole.MEMBER;
         member.joinedAt = Instant.now();
         return member;
     }
@@ -71,10 +75,6 @@ public class GroupMember extends BaseEntity {
 
     public GroupMemberRole getRole() {
         return role;
-    }
-
-    public GroupMemberStatus getStatus() {
-        return status;
     }
 
     public Instant getJoinedAt() {

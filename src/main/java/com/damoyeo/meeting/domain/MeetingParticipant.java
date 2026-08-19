@@ -11,6 +11,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Column;
+import java.time.Instant;
 
 @Entity
 @Table(
@@ -34,6 +36,9 @@ public class MeetingParticipant extends BaseEntity {
     @JoinColumn(name = "group_member_id", nullable = false)
     private GroupMember groupMember;
 
+    @Column(name = "availability_submitted_at")
+    private Instant availabilitySubmittedAt;
+
     protected MeetingParticipant() {
     }
 
@@ -52,5 +57,13 @@ public class MeetingParticipant extends BaseEntity {
 
     public GroupMember getGroupMember() {
         return groupMember;
+    }
+
+    public void markAvailabilitySubmitted() {
+        availabilitySubmittedAt = Instant.now();
+    }
+
+    public Instant getAvailabilitySubmittedAt() {
+        return availabilitySubmittedAt;
     }
 }

@@ -4,12 +4,36 @@
 
 ```text
 Base URL: http://localhost:8080/api
-X-User-Id: 1
 Content-Type: application/json
 ```
 
-OAuth 연동 전까지 모든 요청에 임시 `X-User-Id` 헤더가 필요합니다.
-헤더 값은 DB에 존재하는 사용자 ID여야 합니다.
+Google OAuth 로그인 후 발급되는 세션 쿠키를 사용합니다. 프론트 요청에는
+`credentials: 'include'`가 필요하며 `X-User-Id` 헤더는 사용하지 않습니다.
+
+## 인증
+
+```http
+GET  /api/auth/google
+GET  /api/auth/session
+GET  /api/auth/csrf
+POST /api/auth/logout
+```
+
+- 로그인 시작은 링크 이동 또는 `window.location.href`로 `/api/auth/google`을 엽니다.
+- `GET /api/auth/session`의 `authenticated`, `user.onboardingCompleted`,
+  `calendarAuthorized`로 초기 화면을 결정합니다.
+- `POST`, `PUT`, `PATCH`, `DELETE` 요청 전 `/api/auth/csrf`에서 받은
+  `headerName`과 `token`을 요청 헤더에 넣습니다.
+- 인증되지 않은 보호 API는 `401`을 반환합니다.
+
+## 사용자
+
+```http
+GET  /api/users/me
+POST /api/users/me/onboarding/complete
+```
+
+`onboarding/complete`는 온보딩 완료와 건너뛰기 모두에서 호출합니다.
 
 ## 그룹
 
@@ -57,6 +81,18 @@ GET /api/groups/{groupId}
 
 Response는 그룹 생성 응답과 같습니다.
 
+멤버 응답에는 `nickname`, `role`, `preferenceCount`가 포함됩니다.
+
+### 초대 코드로 그룹 가입
+
+```http
+POST /api/groups/join
+```
+
+```json
+{ "inviteCode": "7KPX9MQR" }
+```
+
 ## 일정
 
 ### 일정 초안 생성
@@ -79,8 +115,7 @@ PUT /api/meetings/{meetingId}/conditions
   "region": "건대",
   "scheduleSearchFrom": "2026-08-23",
   "scheduleSearchTo": "2026-09-07",
-  "preferredTimeOfDay": "EVENING",
-  "preferenceSurveyDeadline": "2026-08-22"
+  "preferredTimeOfDay": "EVENING"
 }
 ```
 
@@ -120,8 +155,7 @@ Response `200`:
   "scheduleSearchFrom": "2026-08-23",
   "scheduleSearchTo": "2026-09-07",
   "preferredTimeOfDay": "EVENING",
-  "preferenceSurveyDeadline": "2026-08-22",
-  "status": "SURVEYING",
+  "status": "DRAFT",
   "participantMemberIds": [1, 2, 3],
   "createdAt": "2026-08-19T06:00:00Z",
   "updatedAt": "2026-08-19T06:10:00Z"
@@ -136,8 +170,23 @@ POST /api/meetings/{meetingId}/submit
 
 Request Body 없음.
 
-- 조사 마감일이 오늘 또는 미래: `SURVEYING`
-- 조사 마감일이 없거나 지남: `READY_TO_PLAN`
+- 제출 직후: `SURVEYING`
+- 모든 참여자의 가능 날짜 제출 후: `READY_TO_PLAN`
+
+### 내 가능 날짜 제출
+
+```http
+PUT /api/meetings/{meetingId}/my-availability
+```
+
+```json
+{ "selectedDates": ["2026-08-23", "2026-08-24"] }
+```
+
+```http
+GET /api/meetings/{meetingId}/availability/me
+GET /api/meetings/{meetingId}/coordination
+```
 
 ### AI 조율 시작
 
@@ -174,7 +223,7 @@ PROPOSING | CONFIRMED | FAILED | CANCELLED
 
 ## 미구현
 
-- 초대 코드 참여, OAuth, Preference
+- Google Calendar 조회·일정 등록
+- Kakao 장소 검색
 - 실제 AI 채팅 및 조율
 - 장소 제안·재생성·확정
-- Google Calendar 등록

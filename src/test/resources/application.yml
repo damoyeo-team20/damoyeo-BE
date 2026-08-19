@@ -27,3 +27,5 @@ spring:
 app:
   oauth:
     login-success-uri: /api/auth/session
+  cors:
+    allowed-origin: http://localhost:3000

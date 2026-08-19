@@ -4,6 +4,8 @@ import com.damoyeo.common.auth.CurrentUserProvider;
 import com.damoyeo.group.dto.CreateGroupRequest;
 import com.damoyeo.group.dto.GroupDetailResponse;
 import com.damoyeo.group.dto.GroupSummaryResponse;
+import com.damoyeo.group.dto.JoinGroupRequest;
+import com.damoyeo.group.dto.JoinGroupResponse;
 import com.damoyeo.group.service.GroupService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -37,6 +39,11 @@ public class GroupController {
     @GetMapping
     public List<GroupSummaryResponse> findMyGroups() {
         return groupService.findMyGroups(currentUserProvider.getCurrentUserId());
+    }
+
+    @PostMapping("/join")
+    public JoinGroupResponse join(@Valid @RequestBody JoinGroupRequest request) {
+        return groupService.join(currentUserProvider.getCurrentUserId(), request.inviteCode());
     }
 
     @GetMapping("/{groupId}")

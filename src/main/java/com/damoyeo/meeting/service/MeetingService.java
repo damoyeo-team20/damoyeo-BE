@@ -2,15 +2,21 @@ package com.damoyeo.meeting.service;
 
 import com.damoyeo.common.exception.BusinessException;
 import com.damoyeo.group.domain.GroupMember;
-import com.damoyeo.group.domain.GroupMemberStatus;
 import com.damoyeo.group.repository.GroupMemberRepository;
 import com.damoyeo.group.service.GroupService;
 import com.damoyeo.meeting.domain.Meeting;
 import com.damoyeo.meeting.domain.MeetingParticipant;
 import com.damoyeo.meeting.dto.MeetingResponse;
+import com.damoyeo.meeting.dto.MeetingListItemResponse;
 import com.damoyeo.meeting.dto.UpdateMeetingRequest;
 import com.damoyeo.meeting.repository.MeetingParticipantRepository;
 import com.damoyeo.meeting.repository.MeetingRepository;
+import com.damoyeo.meeting.repository.MeetingAvailableDateRepository;
+import com.damoyeo.user.repository.UserRepository;
+import com.damoyeo.user.domain.User;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashSet;
@@ -30,24 +36,30 @@ public class MeetingService {
     private final MeetingParticipantRepository participantRepository;
     private final GroupMemberRepository memberRepository;
     private final GroupService groupService;
+    private final MeetingAvailableDateRepository availableDateRepository;
+    private final UserRepository userRepository;
 
     public MeetingService(
             MeetingRepository meetingRepository,
             MeetingParticipantRepository participantRepository,
             GroupMemberRepository memberRepository,
-            GroupService groupService
+            GroupService groupService,
+            MeetingAvailableDateRepository availableDateRepository,
+            UserRepository userRepository
     ) {
         this.meetingRepository = meetingRepository;
         this.participantRepository = participantRepository;
         this.memberRepository = memberRepository;
         this.groupService = groupService;
+        this.availableDateRepository = availableDateRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional
     public MeetingResponse createDraft(long userId, long groupId) {
         GroupMember creator = groupService.requireJoinedMember(userId, groupId);
         Meeting meeting = meetingRepository.save(Meeting.draft(creator.getGroup(), userId));
-        return MeetingResponse.of(meeting, List.of());
+        return responseOf(meeting, List.of());
     }
 
     @Transactional
@@ -58,8 +70,7 @@ public class MeetingService {
                 request.region(),
                 request.scheduleSearchFrom(),
                 request.scheduleSearchTo(),
-                request.preferredTimeOfDay(),
-                request.preferenceSurveyDeadline()
+                request.preferredTimeOfDay()
         );
         return toResponse(meeting);
     }
@@ -73,7 +84,6 @@ public class MeetingService {
         boolean allJoinedGroupMembers = members.size() == memberIds.size()
                 && members.stream().allMatch(member ->
                         member.getGroup().getId().equals(meeting.getGroup().getId())
-                                && member.getStatus() == GroupMemberStatus.JOINED
                 );
         if (!allJoinedGroupMembers) {
             throw new BusinessException(
@@ -88,24 +98,46 @@ public class MeetingService {
                 .map(member -> new MeetingParticipant(meeting, member))
                 .toList();
         participantRepository.saveAll(participants);
-        return MeetingResponse.of(meeting, participants);
+        return responseOf(meeting, participants);
     }
 
     public MeetingResponse find(long userId, long meetingId) {
         return toResponse(requireAccessibleMeeting(userId, meetingId));
     }
 
+    public Object findByGroup(long userId, long groupId, String timing) {
+        groupService.requireJoinedMember(userId, groupId);
+        List<Meeting> meetings = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(groupId);
+        if ("UPCOMING".equalsIgnoreCase(timing)) {
+            return meetings.stream()
+                    .filter(meeting -> meeting.getStatus() == com.damoyeo.meeting.domain.MeetingStatus.CONFIRMED)
+                    .filter(meeting -> meeting.getConfirmedStartAt() != null && meeting.getConfirmedStartAt().isAfter(java.time.Instant.now()))
+                    .min(java.util.Comparator.comparing(Meeting::getConfirmedStartAt))
+                    .map(MeetingListItemResponse::from)
+                    .orElse(null);
+        }
+        if ("PAST".equalsIgnoreCase(timing)) {
+            return meetings.stream()
+                    .filter(meeting -> meeting.getStatus() == com.damoyeo.meeting.domain.MeetingStatus.CONFIRMED)
+                    .filter(meeting -> meeting.getConfirmedStartAt() != null && !meeting.getConfirmedStartAt().isAfter(java.time.Instant.now()))
+                    .sorted(java.util.Comparator.comparing(Meeting::getConfirmedStartAt).reversed())
+                    .map(MeetingListItemResponse::from)
+                    .toList();
+        }
+        return meetings.stream().map(MeetingListItemResponse::from).toList();
+    }
+
     @Transactional
     public MeetingResponse submit(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
-        meeting.submit(LocalDate.now(SERVICE_ZONE), participantRepository.existsByMeetingId(meetingId));
+        meeting.submit(participantRepository.existsByMeetingId(meetingId));
         return toResponse(meeting);
     }
 
     @Transactional
     public MeetingResponse startPlanning(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
-        meeting.startPlanning(LocalDate.now(SERVICE_ZONE));
+        meeting.startPlanning();
         return toResponse(meeting);
     }
 
@@ -125,6 +157,20 @@ public class MeetingService {
     }
 
     private MeetingResponse toResponse(Meeting meeting) {
-        return MeetingResponse.of(meeting, participantRepository.findAllByMeetingIdOrderByIdAsc(meeting.getId()));
+        return responseOf(meeting, participantRepository.findAllByMeetingIdOrderByIdAsc(meeting.getId()));
+    }
+
+    private MeetingResponse responseOf(Meeting meeting, List<MeetingParticipant> participants) {
+        Map<Long, User> users = userRepository.findAllById(
+                participants.stream().map(participant -> participant.getGroupMember().getUserId()).toList()
+        ).stream().collect(Collectors.toMap(User::getId, Function.identity()));
+        Map<Long, List<LocalDate>> selectedDates = participants.stream().collect(Collectors.toMap(
+                MeetingParticipant::getId,
+                participant -> availableDateRepository
+                        .findAllByMeetingParticipantIdOrderByAvailableDateAsc(participant.getId()).stream()
+                        .map(value -> value.getAvailableDate())
+                        .toList()
+        ));
+        return MeetingResponse.of(meeting, participants, users, selectedDates);
     }
 }

@@ -107,20 +107,30 @@ DB 스키마 변경은 Hibernate 자동 생성을 사용하지 않고 Flyway mig
 POST /api/groups
 GET  /api/groups
 GET  /api/groups/{groupId}
+POST /api/groups/join
+
+GET  /api/users/me
+POST /api/users/me/onboarding/complete
 
 POST /api/groups/{groupId}/meetings
 GET  /api/meetings/{meetingId}
 PUT  /api/meetings/{meetingId}/conditions
 PUT  /api/meetings/{meetingId}/participants
 POST /api/meetings/{meetingId}/submit
+PUT  /api/meetings/{meetingId}/availability
+GET  /api/meetings/{meetingId}/availability/me
+GET  /api/meetings/{meetingId}/coordination
 POST /api/meetings/{meetingId}/plan
 ```
 
 현재 일정 제출 규칙은 다음과 같습니다.
 
+- 일정 제출 후 상태는 `COLLECTING_AVAILABILITY`
+- 선택된 참여자는 자신의 가능 날짜를 일정 탐색 범위 안에서 제출
+- 모든 참여자가 제출해야 다음 상태로 전환
 - 선호조사 마감일은 UI에서 날짜로 입력하며 `Asia/Seoul` 기준 해당 날짜가 끝날 때까지 유효
-- 오늘 또는 미래의 선호조사 마감일이 있으면 `SURVEYING`
-- 선호조사 마감일이 없거나 이미 지났으면 `READY_TO_PLAN`
+- 전원 제출 후 오늘 또는 미래의 선호조사 마감일이 있으면 `SURVEYING`
+- 전원 제출 후 선호조사 마감일이 없거나 이미 지났으면 `READY_TO_PLAN`
 - 사용자가 AI 채팅에서 조율을 요청하면 `/plan`을 통해 `PLANNING`으로 전환
 - 일정 작성자만 조건, 참여자, 제출, AI 조율 상태를 변경 가능
 - 그룹 `HOST`도 자신이 생성하지 않은 일정은 변경할 수 없음

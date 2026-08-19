@@ -103,13 +103,12 @@ public class OAuthSecurityConfig {
 
 	@Bean
 	CorsConfigurationSource corsConfigurationSource(
-		@Value("${spring.security.oauth2.client.registration.google.redirect-uri}") String googleRedirectUri
+		@Value("${app.cors.allowed-origin}") String allowedOrigin
 	) {
-		URI redirectUri = validatedRedirectUri(googleRedirectUri);
-		String allowedOrigin = "%s://%s".formatted(redirectUri.getScheme(), redirectUri.getAuthority());
+		URI frontendOrigin = validatedOrigin(allowedOrigin);
 
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(List.of(allowedOrigin));
+		configuration.setAllowedOrigins(List.of(frontendOrigin.toString()));
 		configuration.setAllowedMethods(List.of(
 			HttpMethod.GET.name(),
 			HttpMethod.POST.name(),
@@ -130,6 +129,18 @@ public class OAuthSecurityConfig {
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", configuration);
 		return source;
+	}
+
+	private URI validatedOrigin(String origin) {
+		URI uri = URI.create(origin);
+		if (!SUPPORTED_REDIRECT_SCHEMES.contains(uri.getScheme())
+			|| uri.getHost() == null
+			|| (uri.getPath() != null && !uri.getPath().isBlank() && !"/".equals(uri.getPath()))) {
+			throw new IllegalArgumentException(
+				"FRONTEND_ORIGIN은 path가 없는 http 또는 https origin이어야 합니다."
+			);
+		}
+		return URI.create("%s://%s".formatted(uri.getScheme(), uri.getAuthority()));
 	}
 
 	private String callbackPath(String redirectUri) {
