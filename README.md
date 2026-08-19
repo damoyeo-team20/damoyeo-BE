@@ -91,3 +91,33 @@ src
 도메인 구현을 시작할 때는 `user`, `preference`, `room`, `place`, `revision`, `agent`, `orchestration` 단위의 feature 중심 패키지로 확장할 예정입니다.
 
 DB 스키마 변경은 Hibernate 자동 생성을 사용하지 않고 Flyway migration으로 관리합니다.
+
+## 현재 구현된 API
+
+사용자 인증 연동 전까지 모든 API 요청에 임시 `X-User-Id` 헤더가 필요합니다. OAuth가 연결되면 `CurrentUserProvider` 구현만 교체할 예정입니다.
+
+```text
+POST /api/groups
+GET  /api/groups
+GET  /api/groups/{groupId}
+
+POST /api/groups/{groupId}/meetings
+GET  /api/meetings/{meetingId}
+PUT  /api/meetings/{meetingId}/conditions
+PUT  /api/meetings/{meetingId}/participants
+POST /api/meetings/{meetingId}/submit
+POST /api/meetings/{meetingId}/plan
+```
+
+현재 일정 제출 규칙은 다음과 같습니다.
+
+- 선호조사 마감일은 UI에서 날짜로 입력하며 `Asia/Seoul` 기준 해당 날짜가 끝날 때까지 유효
+- 오늘 또는 미래의 선호조사 마감일이 있으면 `SURVEYING`
+- 선호조사 마감일이 없거나 이미 지났으면 `READY_TO_PLAN`
+- 사용자가 AI 채팅에서 조율을 요청하면 `/plan`을 통해 `PLANNING`으로 전환
+- 일정 작성자만 조건, 참여자, 제출, AI 조율 상태를 변경 가능
+- 그룹 `HOST`도 자신이 생성하지 않은 일정은 변경할 수 없음
+- 향후 AI 채팅과 재생성 요청도 일정 작성자 권한으로 제한 예정
+- 같은 그룹에 참여 중인 멤버만 일정 참여자로 선택 가능
+
+사용자는 Google 계정의 고정 식별자인 `google_subject`를 기준으로 저장합니다. 실제 OAuth 로그인과 사용자 생성 API는 아직 구현하지 않았습니다.
