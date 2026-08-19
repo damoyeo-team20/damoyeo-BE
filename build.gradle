@@ -22,6 +22,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.flywaydb:flyway-database-postgresql'
@@ -29,6 +31,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testRuntimeOnly 'com.h2database:h2'
@@ -37,4 +40,61 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+tasks.register('oauthBootRun', org.springframework.boot.gradle.tasks.run.BootRun) {
+	group = 'application'
+	description = 'Runs the application with Google OAuth settings from the repository .env file.'
+	mainClass = 'com.damoyeo.DamoyeoApplication'
+	classpath = sourceSets.main.runtimeClasspath
+
+	doFirst {
+		def dotenvFile = file('.env')
+		if (!dotenvFile.exists()) {
+			throw new GradleException('.env 파일이 저장소 루트에 필요합니다.')
+		}
+
+		def dotenv = [:]
+		dotenvFile.eachLine('UTF-8') { rawLine ->
+			def line = rawLine.trim()
+			if (!line || line.startsWith('#')) {
+				return
+			}
+			def separator = line.indexOf('=')
+			if (separator <= 0) {
+				return
+			}
+			def key = line.substring(0, separator).trim()
+			def value = line.substring(separator + 1).trim()
+			if ((value.startsWith('"') && value.endsWith('"')) ||
+				(value.startsWith("'") && value.endsWith("'"))) {
+				value = value.substring(1, value.length() - 1)
+			}
+			dotenv[key] = value
+		}
+
+		['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'].each { key ->
+			if (!dotenv[key]) {
+				throw new GradleException(".env에 ${key} 값이 필요합니다.")
+			}
+		}
+
+		def redirectUri
+		try {
+			redirectUri = new URI(dotenv.GOOGLE_REDIRECT_URI)
+		} catch (Exception exception) {
+			throw new GradleException('GOOGLE_REDIRECT_URI가 올바른 전체 URI가 아닙니다.', exception)
+		}
+
+		if (!redirectUri.scheme || !redirectUri.host || !redirectUri.path) {
+			throw new GradleException('GOOGLE_REDIRECT_URI는 scheme, host, path를 모두 포함해야 합니다.')
+		}
+
+		if (redirectUri.host in ['localhost', '127.0.0.1']) {
+			if (redirectUri.port < 0) {
+				throw new GradleException('로컬 GOOGLE_REDIRECT_URI에는 포트를 명시해야 합니다.')
+			}
+			args "--server.port=${redirectUri.port}"
+		}
+	}
 }
