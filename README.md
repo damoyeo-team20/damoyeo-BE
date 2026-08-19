@@ -2,7 +2,7 @@
 
 여러 사용자의 선호와 일정을 바탕으로 모임의 시간, 활동, 장소를 조율하는 Damoyeo 서비스의 백엔드입니다.
 
-현재 저장소에는 팀 개발을 시작하기 위한 최소 Spring Boot 기반만 포함되어 있습니다. 도메인 기능, OAuth, 외부 API 및 실제 Agent 연동은 아직 구현하지 않았습니다.
+현재 저장소에는 그룹·미팅·선호 도메인과 Google OAuth 로그인이 구현되어 있습니다.
 
 ## 기술 스택
 
@@ -73,8 +73,15 @@ docker compose down -v
 | `POSTGRES_USER` | `damoyeo` | Docker PostgreSQL 사용자 |
 | `POSTGRES_PASSWORD` | `damoyeo` | Docker PostgreSQL 비밀번호 |
 | `POSTGRES_PORT` | `5432` | 호스트에 공개할 PostgreSQL 포트 |
+| `GOOGLE_CLIENT_ID` | 없음 | Google OAuth 클라이언트 ID |
+| `GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth 클라이언트 보안 비밀 |
+| `GOOGLE_REDIRECT_URI` | 없음 | Google Cloud에 등록한 전체 리디렉션 URI |
 
 개인 설정은 `.env`에 작성하며 저장소에 커밋하지 않습니다.
+
+## Google OAuth 연동
+
+Google OAuth 로그인은 Spring Security OAuth2 Client와 서버 세션 방식으로 동작합니다. 설정은 저장소 루트의 `.env`에서 자동으로 읽으며, 로그인 API와 프런트엔드 연동 방법은 [Google OAuth 가이드](docs/google-oauth.md)를 참고하세요.
 
 ## 기본 구조
 
@@ -94,7 +101,7 @@ DB 스키마 변경은 Hibernate 자동 생성을 사용하지 않고 Flyway mig
 
 ## 현재 구현된 API
 
-사용자 인증 연동 전까지 모든 API 요청에 임시 `X-User-Id` 헤더가 필요합니다. OAuth가 연결되면 `CurrentUserProvider` 구현만 교체할 예정입니다.
+인증 API를 제외한 모든 API는 Google 로그인이 필요합니다. 로그인 성공 시 Google `sub`를 기준으로 사용자를 생성하거나 프로필을 갱신하고, 서버 세션으로 현재 사용자를 식별합니다.
 
 ```text
 POST /api/groups
@@ -120,4 +127,4 @@ POST /api/meetings/{meetingId}/plan
 - 향후 AI 채팅과 재생성 요청도 일정 작성자 권한으로 제한 예정
 - 같은 그룹에 참여 중인 멤버만 일정 참여자로 선택 가능
 
-사용자는 Google 계정의 고정 식별자인 `google_subject`를 기준으로 저장합니다. 실제 OAuth 로그인과 사용자 생성 API는 아직 구현하지 않았습니다.
+사용자는 Google 계정의 고정 식별자인 `google_subject`를 기준으로 저장합니다.

@@ -2,10 +2,12 @@ package com.damoyeo.common.auth;
 
 import com.damoyeo.common.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("header-auth")
 public class HeaderCurrentUserProvider implements CurrentUserProvider {
 
     public static final String USER_ID_HEADER = "X-User-Id";

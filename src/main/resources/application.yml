@@ -1,6 +1,24 @@
 spring:
   application:
     name: damoyeo
+  config:
+    import: "optional:file:./.env[.properties]"
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            client-name: Google
+            authorization-grant-type: authorization_code
+            redirect-uri: ${GOOGLE_REDIRECT_URI}
+            scope:
+              - openid
+              - profile
+              - email
+              - https://www.googleapis.com/auth/calendar.events
+              - https://www.googleapis.com/auth/calendar.freebusy
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/damoyeo}
     username: ${DB_USERNAME:damoyeo}
@@ -11,6 +29,19 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+
+server:
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+app:
+  oauth:
+    login-success-uri: ${OAUTH_LOGIN_SUCCESS_URI:/api/auth/session}
 
 management:
   endpoints:
