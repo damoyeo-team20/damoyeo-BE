@@ -4,6 +4,10 @@ import com.damoyeo.common.auth.CurrentUserProvider;
 import com.damoyeo.meeting.dto.MeetingResponse;
 import com.damoyeo.meeting.dto.UpdateMeetingRequest;
 import com.damoyeo.meeting.dto.UpdateParticipantsRequest;
+import com.damoyeo.meeting.dto.SubmitAvailabilityRequest;
+import com.damoyeo.meeting.dto.AvailabilityResponse;
+import com.damoyeo.meeting.dto.CoordinationStatusResponse;
+import com.damoyeo.meeting.service.MeetingAvailabilityService;
 import com.damoyeo.meeting.service.MeetingService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -22,10 +26,16 @@ public class MeetingController {
 
     private final CurrentUserProvider currentUserProvider;
     private final MeetingService meetingService;
+    private final MeetingAvailabilityService availabilityService;
 
-    public MeetingController(CurrentUserProvider currentUserProvider, MeetingService meetingService) {
+    public MeetingController(
+            CurrentUserProvider currentUserProvider,
+            MeetingService meetingService,
+            MeetingAvailabilityService availabilityService
+    ) {
         this.currentUserProvider = currentUserProvider;
         this.meetingService = meetingService;
+        this.availabilityService = availabilityService;
     }
 
     @PostMapping("/groups/{groupId}/meetings")
@@ -67,5 +77,27 @@ public class MeetingController {
     @PostMapping("/meetings/{meetingId}/plan")
     public MeetingResponse startPlanning(@PathVariable long meetingId) {
         return meetingService.startPlanning(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @PutMapping("/meetings/{meetingId}/availability")
+    public AvailabilityResponse submitAvailability(
+            @PathVariable long meetingId,
+            @Valid @RequestBody SubmitAvailabilityRequest request
+    ) {
+        return availabilityService.submit(
+                currentUserProvider.getCurrentUserId(),
+                meetingId,
+                request.availableDates()
+        );
+    }
+
+    @GetMapping("/meetings/{meetingId}/availability/me")
+    public AvailabilityResponse findMyAvailability(@PathVariable long meetingId) {
+        return availabilityService.findMine(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @GetMapping("/meetings/{meetingId}/coordination")
+    public CoordinationStatusResponse findCoordinationStatus(@PathVariable long meetingId) {
+        return availabilityService.findCoordinationStatus(currentUserProvider.getCurrentUserId(), meetingId);
     }
 }

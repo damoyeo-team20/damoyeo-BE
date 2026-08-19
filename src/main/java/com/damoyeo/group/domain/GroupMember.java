@@ -57,6 +57,16 @@ public class GroupMember extends BaseEntity {
         return member;
     }
 
+    public static GroupMember member(MeetingGroup group, long userId) {
+        GroupMember member = new GroupMember();
+        member.group = group;
+        member.userId = userId;
+        member.role = GroupMemberRole.MEMBER;
+        member.status = GroupMemberStatus.JOINED;
+        member.joinedAt = Instant.now();
+        return member;
+    }
+
     public Long getId() {
         return id;
     }

@@ -11,11 +11,14 @@ import org.junit.jupiter.api.Test;
 class MeetingTest {
 
     @Test
-    void movesToSurveyingWhenThePreferenceDeadlineIsInTheFuture() {
+    void movesToSurveyingAfterAvailabilityCollectionWhenThePreferenceDeadlineIsActive() {
         LocalDate today = LocalDate.of(2026, 8, 19);
         Meeting meeting = completeDraft(today);
 
         meeting.submit(today, true);
+        assertThat(meeting.getStatus()).isEqualTo(MeetingStatus.COLLECTING_AVAILABILITY);
+
+        meeting.completeAvailabilityCollection(today);
 
         assertThat(meeting.getStatus()).isEqualTo(MeetingStatus.SURVEYING);
     }
@@ -26,6 +29,9 @@ class MeetingTest {
         Meeting meeting = completeDraft(null);
 
         meeting.submit(today, true);
+        assertThat(meeting.getStatus()).isEqualTo(MeetingStatus.COLLECTING_AVAILABILITY);
+
+        meeting.completeAvailabilityCollection(today);
 
         assertThat(meeting.getStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
     }
@@ -35,6 +41,7 @@ class MeetingTest {
         LocalDate today = LocalDate.of(2026, 8, 20);
         Meeting meeting = completeDraft(today.minusDays(1));
         meeting.submit(today, true);
+        meeting.completeAvailabilityCollection(today);
 
         meeting.startPlanning(today);
 
@@ -46,6 +53,7 @@ class MeetingTest {
         LocalDate today = LocalDate.of(2026, 8, 19);
         Meeting meeting = completeDraft(today);
         meeting.submit(today, true);
+        meeting.completeAvailabilityCollection(today);
 
         assertThatThrownBy(() -> meeting.startPlanning(today))
                 .isInstanceOf(BusinessException.class)

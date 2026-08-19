@@ -9,6 +9,15 @@ Content-Type: application/json
 ```
 
 OAuth 연동 전까지 모든 요청에 임시 `X-User-Id` 헤더가 필요합니다.
+
+## 사용자
+
+```http
+GET  /api/users/me
+POST /api/users/me/onboarding/complete
+```
+
+`onboarding/complete`는 온보딩 완료와 건너뛰기 모두에서 호출합니다.
 헤더 값은 DB에 존재하는 사용자 ID여야 합니다.
 
 ## 그룹
@@ -56,6 +65,18 @@ GET /api/groups/{groupId}
 ```
 
 Response는 그룹 생성 응답과 같습니다.
+
+멤버 응답에는 `nickname`, `role`, `preferenceCount`가 포함됩니다.
+
+### 초대 코드로 그룹 가입
+
+```http
+POST /api/groups/join
+```
+
+```json
+{ "inviteCode": "7KPX9MQR" }
+```
 
 ## 일정
 
@@ -136,8 +157,24 @@ POST /api/meetings/{meetingId}/submit
 
 Request Body 없음.
 
-- 조사 마감일이 오늘 또는 미래: `SURVEYING`
-- 조사 마감일이 없거나 지남: `READY_TO_PLAN`
+- 제출 직후: `COLLECTING_AVAILABILITY`
+- 모든 참여자의 가능 날짜 제출 후 조사 마감 전: `SURVEYING`
+- 모든 참여자의 가능 날짜 제출 후 조율 가능: `READY_TO_PLAN`
+
+### 내 가능 날짜 제출
+
+```http
+PUT /api/meetings/{meetingId}/availability
+```
+
+```json
+{ "availableDates": ["2026-08-23", "2026-08-24"] }
+```
+
+```http
+GET /api/meetings/{meetingId}/availability/me
+GET /api/meetings/{meetingId}/coordination
+```
 
 ### AI 조율 시작
 
@@ -157,7 +194,7 @@ Request Body 없음. 상태를 `PLANNING`으로 변경합니다. 실제 AI 호�
 ## 일정 상태
 
 ```text
-DRAFT | SURVEYING | READY_TO_PLAN | PLANNING
+DRAFT | COLLECTING_AVAILABILITY | SURVEYING | READY_TO_PLAN | PLANNING
 PROPOSING | CONFIRMED | FAILED | CANCELLED
 ```
 

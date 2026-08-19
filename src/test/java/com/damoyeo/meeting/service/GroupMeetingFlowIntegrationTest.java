@@ -36,6 +36,9 @@ class GroupMeetingFlowIntegrationTest {
     private MeetingService meetingService;
 
     @Autowired
+    private MeetingAvailabilityService availabilityService;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -72,9 +75,15 @@ class GroupMeetingFlowIntegrationTest {
         );
 
         MeetingResponse submitted = meetingService.submit(userId, draft.id());
+        var availability = availabilityService.submit(
+                userId,
+                draft.id(),
+                Set.of(LocalDate.of(2026, 8, 23))
+        );
         MeetingResponse planning = meetingService.startPlanning(userId, draft.id());
 
-        assertThat(submitted.status()).isEqualTo(MeetingStatus.READY_TO_PLAN);
+        assertThat(submitted.status()).isEqualTo(MeetingStatus.COLLECTING_AVAILABILITY);
+        assertThat(availability.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(planning.status()).isEqualTo(MeetingStatus.PLANNING);
         assertThat(planning.participantMemberIds()).containsExactly(group.members().getFirst().memberId());
     }

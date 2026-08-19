@@ -102,9 +102,22 @@ public class Meeting extends BaseEntity {
         if (!hasParticipants) {
             throw new BusinessException("PARTICIPANT_REQUIRED", "참여자를 한 명 이상 선택해야 합니다.", HttpStatus.BAD_REQUEST);
         }
+        status = MeetingStatus.COLLECTING_AVAILABILITY;
+    }
+
+    public void completeAvailabilityCollection(LocalDate today) {
+        if (status != MeetingStatus.COLLECTING_AVAILABILITY) {
+            throw new BusinessException("AVAILABILITY_NOT_COLLECTING", "가능 날짜를 수집 중인 일정이 아닙니다.", HttpStatus.CONFLICT);
+        }
         status = preferenceSurveyDeadline != null && !preferenceSurveyDeadline.isBefore(today)
                 ? MeetingStatus.SURVEYING
                 : MeetingStatus.READY_TO_PLAN;
+    }
+
+    public void ensureCollectingAvailability() {
+        if (status != MeetingStatus.COLLECTING_AVAILABILITY) {
+            throw new BusinessException("AVAILABILITY_NOT_COLLECTING", "가능 날짜를 제출할 수 없는 상태입니다.", HttpStatus.CONFLICT);
+        }
     }
 
     public void startPlanning(LocalDate today) {
