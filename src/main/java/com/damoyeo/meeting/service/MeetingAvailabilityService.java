@@ -68,14 +68,13 @@ public class MeetingAvailabilityService {
 
         List<MeetingParticipant> participants = participantRepository.findAllByMeetingIdOrderByIdAsc(meetingId);
         if (participants.stream().allMatch(value -> value.getAvailabilitySubmittedAt() != null)) {
-            meeting.completeAvailabilityCollection(LocalDate.now(SERVICE_ZONE));
+            meeting.completeAvailabilityCollection();
         }
 
         return new AvailabilityResponse(
-                meetingId,
-                participant.getId(),
-                dates.stream().map(MeetingAvailableDate::getAvailableDate).toList(),
+                participant.getGroupMember().getId(),
                 participant.getAvailabilitySubmittedAt(),
+                dates.stream().map(MeetingAvailableDate::getAvailableDate).toList(),
                 meeting.getStatus()
         );
     }
@@ -95,10 +94,9 @@ public class MeetingAvailabilityService {
                 .map(MeetingAvailableDate::getAvailableDate)
                 .toList();
         return new AvailabilityResponse(
-                meetingId,
-                participant.getId(),
-                dates,
+                participant.getGroupMember().getId(),
                 participant.getAvailabilitySubmittedAt(),
+                dates,
                 meeting.getStatus()
         );
     }
@@ -120,12 +118,10 @@ public class MeetingAvailabilityService {
 
     private void validateRange(Meeting meeting, Set<LocalDate> availableDates) {
         if (availableDates.isEmpty()
-                || meeting.getScheduleSearchFrom() == null
-                || meeting.getScheduleSearchTo() == null
-                || availableDates.stream().anyMatch(date ->
+                || (meeting.getScheduleSearchFrom() != null && availableDates.stream().anyMatch(date ->
                         date.isBefore(meeting.getScheduleSearchFrom())
                                 || date.isAfter(meeting.getScheduleSearchTo())
-                )) {
+                ))) {
             throw new BusinessException(
                     "INVALID_AVAILABLE_DATE",
                     "가능 날짜는 일정 탐색 범위 안에서 한 개 이상 선택해야 합니다.",

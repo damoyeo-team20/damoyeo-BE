@@ -5,6 +5,7 @@ import com.damoyeo.group.dto.CreateGroupRequest;
 import com.damoyeo.group.dto.GroupDetailResponse;
 import com.damoyeo.group.dto.GroupSummaryResponse;
 import com.damoyeo.group.dto.JoinGroupRequest;
+import com.damoyeo.group.dto.JoinGroupResponse;
 import com.damoyeo.group.service.GroupService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -41,7 +42,7 @@ public class GroupController {
     }
 
     @PostMapping("/join")
-    public GroupDetailResponse join(@Valid @RequestBody JoinGroupRequest request) {
+    public JoinGroupResponse join(@Valid @RequestBody JoinGroupRequest request) {
         return groupService.join(currentUserProvider.getCurrentUserId(), request.inviteCode());
     }
 

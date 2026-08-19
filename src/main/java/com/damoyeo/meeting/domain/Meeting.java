@@ -49,9 +49,6 @@ public class Meeting extends BaseEntity {
     @Column(name = "preferred_time_of_day", length = 30)
     private PreferredTimeOfDay preferredTimeOfDay;
 
-    @Column(name = "preference_survey_deadline")
-    private LocalDate preferenceSurveyDeadline;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private MeetingStatus status;
@@ -78,8 +75,7 @@ public class Meeting extends BaseEntity {
             String region,
             LocalDate scheduleSearchFrom,
             LocalDate scheduleSearchTo,
-            PreferredTimeOfDay preferredTimeOfDay,
-            LocalDate preferenceSurveyDeadline
+            PreferredTimeOfDay preferredTimeOfDay
     ) {
         requireDraft();
         this.purpose = trimToNull(purpose);
@@ -87,45 +83,39 @@ public class Meeting extends BaseEntity {
         this.scheduleSearchFrom = scheduleSearchFrom;
         this.scheduleSearchTo = scheduleSearchTo;
         this.preferredTimeOfDay = preferredTimeOfDay;
-        this.preferenceSurveyDeadline = preferenceSurveyDeadline;
     }
 
-    public void submit(LocalDate today, boolean hasParticipants) {
+    public void submit(boolean hasParticipants) {
         requireDraft();
-        if (purpose == null || region == null || scheduleSearchFrom == null || scheduleSearchTo == null
-                || preferredTimeOfDay == null) {
-            throw new BusinessException("INCOMPLETE_MEETING", "일정 조건을 모두 입력해야 합니다.", HttpStatus.BAD_REQUEST);
+        if (purpose == null || region == null) {
+            throw new BusinessException("INCOMPLETE_MEETING", "모임 목적과 지역을 입력해야 합니다.", HttpStatus.BAD_REQUEST);
         }
-        if (scheduleSearchFrom.isAfter(scheduleSearchTo)) {
+        if ((scheduleSearchFrom == null) != (scheduleSearchTo == null)
+                || (scheduleSearchFrom != null && scheduleSearchFrom.isAfter(scheduleSearchTo))) {
             throw new BusinessException("INVALID_SEARCH_PERIOD", "일정 탐색 시작일은 종료일보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
         if (!hasParticipants) {
             throw new BusinessException("PARTICIPANT_REQUIRED", "참여자를 한 명 이상 선택해야 합니다.", HttpStatus.BAD_REQUEST);
         }
-        status = MeetingStatus.COLLECTING_AVAILABILITY;
+        status = MeetingStatus.SURVEYING;
     }
 
-    public void completeAvailabilityCollection(LocalDate today) {
-        if (status != MeetingStatus.COLLECTING_AVAILABILITY) {
+    public void completeAvailabilityCollection() {
+        if (status != MeetingStatus.SURVEYING) {
             throw new BusinessException("AVAILABILITY_NOT_COLLECTING", "가능 날짜를 수집 중인 일정이 아닙니다.", HttpStatus.CONFLICT);
         }
-        status = preferenceSurveyDeadline != null && !preferenceSurveyDeadline.isBefore(today)
-                ? MeetingStatus.SURVEYING
-                : MeetingStatus.READY_TO_PLAN;
+        status = MeetingStatus.READY_TO_PLAN;
     }
 
     public void ensureCollectingAvailability() {
-        if (status != MeetingStatus.COLLECTING_AVAILABILITY) {
+        if (status != MeetingStatus.SURVEYING) {
             throw new BusinessException("AVAILABILITY_NOT_COLLECTING", "가능 날짜를 제출할 수 없는 상태입니다.", HttpStatus.CONFLICT);
         }
     }
 
-    public void startPlanning(LocalDate today) {
-        if (status != MeetingStatus.SURVEYING && status != MeetingStatus.READY_TO_PLAN) {
+    public void startPlanning() {
+        if (status != MeetingStatus.READY_TO_PLAN) {
             throw new BusinessException("MEETING_NOT_READY", "조율을 시작할 수 없는 상태입니다.", HttpStatus.CONFLICT);
-        }
-        if (preferenceSurveyDeadline != null && !preferenceSurveyDeadline.isBefore(today)) {
-            throw new BusinessException("SURVEY_IN_PROGRESS", "선호조사가 아직 진행 중입니다.", HttpStatus.CONFLICT);
         }
         status = MeetingStatus.PLANNING;
     }
@@ -177,10 +167,6 @@ public class Meeting extends BaseEntity {
 
     public PreferredTimeOfDay getPreferredTimeOfDay() {
         return preferredTimeOfDay;
-    }
-
-    public LocalDate getPreferenceSurveyDeadline() {
-        return preferenceSurveyDeadline;
     }
 
     public MeetingStatus getStatus() {

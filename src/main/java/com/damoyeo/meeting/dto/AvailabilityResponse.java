@@ -6,10 +6,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record AvailabilityResponse(
-        Long meetingId,
-        Long meetingParticipantId,
-        List<LocalDate> availableDates,
-        Instant submittedAt,
+        Long groupMemberId,
+        Instant confirmedAt,
+        List<LocalDate> selectedDates,
         MeetingStatus meetingStatus
 ) {
 }

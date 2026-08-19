@@ -12,19 +12,26 @@ public record GroupDetailResponse(
         Long id,
         String name,
         String inviteCode,
+        int memberCount,
+        long pastMeetingCount,
         List<MemberResponse> members,
+        ActiveMeetingResponse activeMeeting,
         Instant createdAt
 ) {
     public static GroupDetailResponse of(
             MeetingGroup group,
             List<GroupMember> members,
             Map<Long, User> users,
-            Map<Long, Long> preferenceCounts
+            Map<Long, Long> preferenceCounts,
+            long pastMeetingCount,
+            ActiveMeetingResponse activeMeeting
     ) {
         return new GroupDetailResponse(
                 group.getId(),
                 group.getName(),
                 group.getInviteCode(),
+                members.size(),
+                pastMeetingCount,
                 members.stream()
                         .map(member -> MemberResponse.of(
                                 member,
@@ -32,6 +39,7 @@ public record GroupDetailResponse(
                                 preferenceCounts.getOrDefault(member.getUserId(), 0L)
                         ))
                         .toList(),
+                activeMeeting,
                 group.getCreatedAt()
         );
     }
@@ -41,7 +49,8 @@ public record GroupDetailResponse(
             Long userId,
             String nickname,
             GroupMemberRole role,
-            long preferenceCount
+            long preferenceCount,
+            boolean calendarConnected
     ) {
         public static MemberResponse of(GroupMember member, User user, long preferenceCount) {
             return new MemberResponse(
@@ -49,8 +58,12 @@ public record GroupDetailResponse(
                     member.getUserId(),
                     user == null ? null : user.getNickname(),
                     member.getRole(),
-                    preferenceCount
+                    preferenceCount,
+                    false
             );
         }
+    }
+
+    public record ActiveMeetingResponse(Long id, String status) {
     }
 }

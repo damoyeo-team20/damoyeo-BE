@@ -115,8 +115,7 @@ PUT /api/meetings/{meetingId}/conditions
   "region": "건대",
   "scheduleSearchFrom": "2026-08-23",
   "scheduleSearchTo": "2026-09-07",
-  "preferredTimeOfDay": "EVENING",
-  "preferenceSurveyDeadline": "2026-08-22"
+  "preferredTimeOfDay": "EVENING"
 }
 ```
 
@@ -156,8 +155,7 @@ Response `200`:
   "scheduleSearchFrom": "2026-08-23",
   "scheduleSearchTo": "2026-09-07",
   "preferredTimeOfDay": "EVENING",
-  "preferenceSurveyDeadline": "2026-08-22",
-  "status": "SURVEYING",
+  "status": "DRAFT",
   "participantMemberIds": [1, 2, 3],
   "createdAt": "2026-08-19T06:00:00Z",
   "updatedAt": "2026-08-19T06:10:00Z"
@@ -172,18 +170,17 @@ POST /api/meetings/{meetingId}/submit
 
 Request Body 없음.
 
-- 제출 직후: `COLLECTING_AVAILABILITY`
-- 모든 참여자의 가능 날짜 제출 후 조사 마감 전: `SURVEYING`
-- 모든 참여자의 가능 날짜 제출 후 조율 가능: `READY_TO_PLAN`
+- 제출 직후: `SURVEYING`
+- 모든 참여자의 가능 날짜 제출 후: `READY_TO_PLAN`
 
 ### 내 가능 날짜 제출
 
 ```http
-PUT /api/meetings/{meetingId}/availability
+PUT /api/meetings/{meetingId}/my-availability
 ```
 
 ```json
-{ "availableDates": ["2026-08-23", "2026-08-24"] }
+{ "selectedDates": ["2026-08-23", "2026-08-24"] }
 ```
 
 ```http
@@ -209,7 +206,7 @@ Request Body 없음. 상태를 `PLANNING`으로 변경합니다. 실제 AI 호�
 ## 일정 상태
 
 ```text
-DRAFT | COLLECTING_AVAILABILITY | SURVEYING | READY_TO_PLAN | PLANNING
+DRAFT | SURVEYING | READY_TO_PLAN | PLANNING
 PROPOSING | CONFIRMED | FAILED | CANCELLED
 ```
 

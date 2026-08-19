@@ -103,7 +103,6 @@ Agent가 사용할 수 있는 선호 코드와 계층입니다.
 | `schedule_search_from` | DATE, nullable | 일정 탐색 시작일 |
 | `schedule_search_to` | DATE, nullable | 일정 탐색 종료일 |
 | `preferred_time_of_day` | VARCHAR(30), nullable | 선호 시간대 |
-| `preference_survey_deadline` | DATE, nullable | 개인 선호 변경 마감일 |
 | `status` | VARCHAR(30) | 일정 진행 상태 |
 | `confirmed_start_at` | TIMESTAMPTZ, nullable | 최종 확정 시작 시각 |
 | `confirmed_end_at` | TIMESTAMPTZ, nullable | 최종 확정 종료 시각 |

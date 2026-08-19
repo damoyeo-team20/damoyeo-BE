@@ -44,7 +44,8 @@ class GroupJoinAvailabilityIntegrationTest {
         User host = userRepository.save(new User("join-host", "join-host@example.com", "호스트"));
         User member = userRepository.save(new User("join-member", "join-member@example.com", "멤버"));
         var group = groupService.create(host.getId(), new CreateGroupRequest("정기 모임"));
-        var joinedGroup = groupService.join(member.getId(), group.inviteCode().toLowerCase());
+        groupService.join(member.getId(), group.inviteCode().toLowerCase());
+        var joinedGroup = groupService.findDetail(host.getId(), group.id());
         var meeting = meetingService.createDraft(host.getId(), group.id());
         LocalDate from = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1);
         LocalDate to = from.plusDays(7);
@@ -54,8 +55,7 @@ class GroupJoinAvailabilityIntegrationTest {
                 "건대",
                 from,
                 to,
-                PreferredTimeOfDay.EVENING,
-                null
+                PreferredTimeOfDay.EVENING
         ));
         meetingService.updateParticipants(
                 host.getId(),
@@ -70,7 +70,7 @@ class GroupJoinAvailabilityIntegrationTest {
         var completed = availabilityService.findCoordinationStatus(host.getId(), meeting.id());
 
         assertThat(joinedGroup.members()).hasSize(2);
-        assertThat(hostSubmission.meetingStatus()).isEqualTo(MeetingStatus.COLLECTING_AVAILABILITY);
+        assertThat(hostSubmission.meetingStatus()).isEqualTo(MeetingStatus.SURVEYING);
         assertThat(waiting.allSubmitted()).isFalse();
         assertThat(memberSubmission.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(completed.allSubmitted()).isTrue();
@@ -81,9 +81,7 @@ class GroupJoinAvailabilityIntegrationTest {
         User user = userRepository.save(new User("duplicate-user", "duplicate@example.com", "사용자"));
         var group = groupService.create(user.getId(), new CreateGroupRequest("내 그룹"));
 
-        assertThatThrownBy(() -> groupService.join(user.getId(), group.inviteCode()))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("이미 참여 중인 그룹입니다.");
+        assertThat(groupService.join(user.getId(), group.inviteCode()).alreadyMember()).isTrue();
 
         assertThat(userService.findMe(user.getId()).onboardingCompleted()).isFalse();
         assertThat(userService.completeOnboarding(user.getId()).onboardingCompleted()).isTrue();

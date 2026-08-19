@@ -16,7 +16,7 @@ public interface MeetingGroupRepository extends JpaRepository<MeetingGroup, Long
     @Query("""
             select g from MeetingGroup g
             join GroupMember gm on gm.group = g
-            where gm.userId = :userId and gm.status = com.damoyeo.group.domain.GroupMemberStatus.JOINED
+            where gm.userId = :userId
             order by g.createdAt desc
             """)
     List<MeetingGroup> findAllJoinedByUserId(@Param("userId") long userId);

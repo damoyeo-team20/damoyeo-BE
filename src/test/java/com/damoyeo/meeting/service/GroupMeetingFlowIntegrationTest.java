@@ -64,8 +64,7 @@ class GroupMeetingFlowIntegrationTest {
                         "건대",
                         LocalDate.of(2026, 8, 23),
                         LocalDate.of(2026, 9, 7),
-                        PreferredTimeOfDay.EVENING,
-                        null
+                        PreferredTimeOfDay.EVENING
                 )
         );
         meetingService.updateParticipants(
@@ -82,7 +81,7 @@ class GroupMeetingFlowIntegrationTest {
         );
         MeetingResponse planning = meetingService.startPlanning(userId, draft.id());
 
-        assertThat(submitted.status()).isEqualTo(MeetingStatus.COLLECTING_AVAILABILITY);
+        assertThat(submitted.status()).isEqualTo(MeetingStatus.SURVEYING);
         assertThat(availability.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(planning.status()).isEqualTo(MeetingStatus.PLANNING);
         assertThat(planning.participantMemberIds()).containsExactly(group.members().getFirst().memberId());

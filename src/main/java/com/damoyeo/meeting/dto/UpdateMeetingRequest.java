@@ -11,7 +11,6 @@ public record UpdateMeetingRequest(
         String region,
         LocalDate scheduleSearchFrom,
         LocalDate scheduleSearchTo,
-        PreferredTimeOfDay preferredTimeOfDay,
-        LocalDate preferenceSurveyDeadline
+        PreferredTimeOfDay preferredTimeOfDay
 ) {
 }

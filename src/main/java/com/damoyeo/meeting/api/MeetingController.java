@@ -2,6 +2,9 @@ package com.damoyeo.meeting.api;
 
 import com.damoyeo.common.auth.CurrentUserProvider;
 import com.damoyeo.meeting.dto.MeetingResponse;
+import com.damoyeo.meeting.dto.MeetingListItemResponse;
+import java.util.List;
+import org.springframework.web.bind.annotation.RequestParam;
 import com.damoyeo.meeting.dto.UpdateMeetingRequest;
 import com.damoyeo.meeting.dto.UpdateParticipantsRequest;
 import com.damoyeo.meeting.dto.SubmitAvailabilityRequest;
@@ -44,6 +47,14 @@ public class MeetingController {
         return ResponseEntity.created(URI.create("/api/meetings/" + response.id())).body(response);
     }
 
+    @GetMapping("/groups/{groupId}/meetings")
+    public Object findGroupMeetings(
+            @PathVariable long groupId,
+            @RequestParam(defaultValue = "ALL") String timing
+    ) {
+        return meetingService.findByGroup(currentUserProvider.getCurrentUserId(), groupId, timing);
+    }
+
     @GetMapping("/meetings/{meetingId}")
     public MeetingResponse find(@PathVariable long meetingId) {
         return meetingService.find(currentUserProvider.getCurrentUserId(), meetingId);
@@ -79,7 +90,7 @@ public class MeetingController {
         return meetingService.startPlanning(currentUserProvider.getCurrentUserId(), meetingId);
     }
 
-    @PutMapping("/meetings/{meetingId}/availability")
+    @PutMapping({"/meetings/{meetingId}/my-availability", "/meetings/{meetingId}/availability"})
     public AvailabilityResponse submitAvailability(
             @PathVariable long meetingId,
             @Valid @RequestBody SubmitAvailabilityRequest request
@@ -87,7 +98,7 @@ public class MeetingController {
         return availabilityService.submit(
                 currentUserProvider.getCurrentUserId(),
                 meetingId,
-                request.availableDates()
+                request.selectedDates()
         );
     }
 
