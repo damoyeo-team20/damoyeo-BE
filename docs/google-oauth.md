@@ -15,6 +15,7 @@ GOOGLE_REDIRECT_URI=Google-Cloud에-등록한-전체-리디렉션-URI
 ```dotenv
 OAUTH_LOGIN_SUCCESS_URI=/api/auth/session
 SESSION_COOKIE_SECURE=false
+FRONTEND_ORIGIN=http://localhost:3000
 ```
 
 운영 HTTPS 환경에서는 `SESSION_COOKIE_SECURE=true`를 사용합니다. `.env`는 Git에서 제외되며 실제 비밀값을 커밋하지 않습니다.
@@ -58,7 +59,8 @@ const session = await fetch('/api/auth/session', {
 }).then((response) => response.json());
 ```
 
-로그아웃 전 CSRF 토큰을 조회해 응답의 `headerName`과 `token`을 그대로 전달합니다.
+로그아웃을 포함한 모든 상태 변경 요청(`POST`, `PUT`, `PATCH`, `DELETE`) 전에
+CSRF 토큰을 조회해 응답의 `headerName`과 `token`을 그대로 전달합니다.
 
 ```javascript
 const csrf = await fetch('/api/auth/csrf', {

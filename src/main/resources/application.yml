@@ -42,6 +42,8 @@ server:
 app:
   oauth:
     login-success-uri: ${OAUTH_LOGIN_SUCCESS_URI:/api/auth/session}
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
 
 management:
   endpoints:

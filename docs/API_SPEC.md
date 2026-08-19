@@ -4,11 +4,27 @@
 
 ```text
 Base URL: http://localhost:8080/api
-X-User-Id: 1
 Content-Type: application/json
 ```
 
-OAuth 연동 전까지 모든 요청에 임시 `X-User-Id` 헤더가 필요합니다.
+Google OAuth 로그인 후 발급되는 세션 쿠키를 사용합니다. 프론트 요청에는
+`credentials: 'include'`가 필요하며 `X-User-Id` 헤더는 사용하지 않습니다.
+
+## 인증
+
+```http
+GET  /api/auth/google
+GET  /api/auth/session
+GET  /api/auth/csrf
+POST /api/auth/logout
+```
+
+- 로그인 시작은 링크 이동 또는 `window.location.href`로 `/api/auth/google`을 엽니다.
+- `GET /api/auth/session`의 `authenticated`, `user.onboardingCompleted`,
+  `calendarAuthorized`로 초기 화면을 결정합니다.
+- `POST`, `PUT`, `PATCH`, `DELETE` 요청 전 `/api/auth/csrf`에서 받은
+  `headerName`과 `token`을 요청 헤더에 넣습니다.
+- 인증되지 않은 보호 API는 `401`을 반환합니다.
 
 ## 사용자
 
@@ -18,7 +34,6 @@ POST /api/users/me/onboarding/complete
 ```
 
 `onboarding/complete`는 온보딩 완료와 건너뛰기 모두에서 호출합니다.
-헤더 값은 DB에 존재하는 사용자 ID여야 합니다.
 
 ## 그룹
 
@@ -211,7 +226,7 @@ PROPOSING | CONFIRMED | FAILED | CANCELLED
 
 ## 미구현
 
-- 초대 코드 참여, OAuth, Preference
+- Google Calendar 조회·일정 등록
+- Kakao 장소 검색
 - 실제 AI 채팅 및 조율
 - 장소 제안·재생성·확정
-- Google Calendar 등록
