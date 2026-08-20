@@ -88,6 +88,7 @@ class GroupMeetingFlowIntegrationTest {
                 draft.id(),
                 Set.of(LocalDate.of(2026, 8, 23))
         );
+        MeetingResponse prepared = meetingService.prepareForChat(userId, draft.id());
         when(aiClient.chat(anyLong(), any(), any())).thenReturn(new AiClient.MeetingChatResponse("무엇을 하고 싶은지 알려주세요."));
         meetingService.chat(userId, draft.id(), "조용하게 저녁을 먹고 싶어요");
         when(aiClient.summarizeContext(anyLong(), any())).thenReturn(
@@ -106,6 +107,7 @@ class GroupMeetingFlowIntegrationTest {
 
         assertThat(submitted.status()).isEqualTo(MeetingStatus.SURVEYING);
         assertThat(availability.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
+        assertThat(prepared.status()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(planning.status()).isEqualTo(MeetingStatus.PROPOSING);
         assertThat(planning.participantMemberIds()).containsExactly(group.members().getFirst().memberId());
     }

@@ -216,6 +216,14 @@ public class MeetingService {
         return toResponse(meeting);
     }
 
+    /** 채팅 진입 전 공통 가능 날짜만 검증한다. 후보 생성이나 AI 호출은 하지 않는다. */
+    @Transactional
+    public MeetingResponse prepareForChat(long userId, long meetingId) {
+        Meeting meeting = requireEditableMeeting(userId, meetingId);
+        ensureCommonAvailableDate(meeting);
+        return toResponse(meeting);
+    }
+
     private void ensureCommonAvailableDate(Meeting meeting) {
         commonAvailableDates(meeting);
     }

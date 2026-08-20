@@ -89,8 +89,8 @@ public class MeetingController {
     }
 
     @PostMapping("/meetings/{meetingId}/plan")
-    public MeetingResponse startPlanning(@PathVariable long meetingId) {
-        return meetingService.startPlanning(currentUserProvider.getCurrentUserId(), meetingId);
+    public MeetingResponse prepareForChat(@PathVariable long meetingId) {
+        return meetingService.prepareForChat(currentUserProvider.getCurrentUserId(), meetingId);
     }
 
     @PostMapping("/meetings/{meetingId}/generate")
