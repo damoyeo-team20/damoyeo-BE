@@ -1,0 +1,10 @@
+.git
+.github
+.gradle
+build
+.env
+.env.*
+!.env.example
+compose*.yml
+Caddyfile
+README.md

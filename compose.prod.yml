@@ -1,0 +1,27 @@
+services:
+  backend:
+    image: ghcr.io/damoyeo-team20/damoyeo-be:latest
+    container_name: damoyeo-backend
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: damoyeo-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  caddy_data:
+  caddy_config:

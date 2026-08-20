@@ -62,6 +62,33 @@ docker compose down -v
 
 `-v` 옵션은 로컬 PostgreSQL 데이터를 삭제하므로 필요한 데이터가 없는지 확인한 뒤 사용하세요.
 
+## 운영 배포
+
+운영 환경에서는 `compose.prod.yml`로 GHCR의 백엔드 이미지와 Caddy를 실행합니다.
+
+```bash
+docker compose -f compose.prod.yml pull
+docker compose -f compose.prod.yml up -d
+```
+
+운영 서버의 `.env`에는 PostgreSQL 접속 정보와 OAuth 설정 외에 AI 서버의 사설 주소 및 내부 API 키를 설정합니다.
+
+```dotenv
+DB_URL=jdbc:postgresql://<database-host>:5432/damoyeo
+AI_BASE_URL=http://<ai-private-ip>:8000
+INTERNAL_API_KEY=<shared-secret>
+```
+
+Caddy는 외부의 80·443 포트를 받고 Docker 네트워크의 `backend:8080`으로 요청을 전달합니다. 같은 VPC의 AI 인스턴스가 백엔드 사설 IP의 8080 포트로 직접 접근할 수 있도록 운영 Compose는 호스트의 8080 포트도 공개합니다.
+
+백엔드 EC2의 Security Group은 TCP 8080 인바운드 소스를 AI 인스턴스의 Security Group으로만 제한해야 합니다. AI 서버 포트도 반대로 백엔드 EC2의 Security Group에서 오는 요청만 허용합니다.
+
+운영 컨테이너를 종료하려면 다음 명령을 사용합니다.
+
+```bash
+docker compose -f compose.prod.yml down
+```
+
 ## 환경변수
 
 | 변수 | 기본값 | 설명 |

@@ -1,0 +1,4 @@
+api.damoyeo.kro.kr {
+    # 80번(HTTP) 포트로 들어오면 자동으로 443번(HTTPS)으로 리다이렉트되며, SSL 인증서 발급도 자동 처리
+    reverse_proxy backend:8080
+}
