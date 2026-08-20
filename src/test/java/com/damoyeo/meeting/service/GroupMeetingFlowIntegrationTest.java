@@ -16,6 +16,7 @@ import com.damoyeo.meeting.domain.ChatRole;
 import com.damoyeo.meeting.domain.MeetingChatMessage;
 import com.damoyeo.meeting.domain.MeetingMemory;
 import com.damoyeo.meeting.dto.MeetingResponse;
+import com.damoyeo.meeting.dto.MeetingChatResponse;
 import com.damoyeo.meeting.dto.UpdateMeetingRequest;
 import com.damoyeo.meeting.repository.MeetingChatMessageRepository;
 import com.damoyeo.meeting.repository.MeetingMemoryRepository;
@@ -88,20 +89,23 @@ class GroupMeetingFlowIntegrationTest {
         var availability = availabilityService.submit(
                 userId,
                 draft.id(),
-                Set.of(LocalDate.of(2026, 8, 23))
+                Set.of(LocalDate.of(2026, 8, 23), LocalDate.of(2026, 8, 30))
         );
         when(aiClient.resolveSchedule(anyLong(), any(AiClient.ScheduleResolutionRequest.class))).thenReturn(
                 new AiClient.ScheduleResolutionResponse(
                         java.time.Instant.parse("2026-08-23T10:00:00Z"),
                         java.time.Instant.parse("2026-08-23T12:00:00Z"),
-                        "참여자 모두가 가능한 날짜입니다."
+                        "참여자 모두가 가능한 날짜입니다. [DEBUG: {\"node\":\"schedule\"}]"
                 )
         );
         MeetingResponse prepared = meetingService.prepareForChat(userId, draft.id());
         ArgumentCaptor<AiClient.ScheduleResolutionRequest> scheduleRequest = ArgumentCaptor.forClass(AiClient.ScheduleResolutionRequest.class);
         verify(aiClient).resolveSchedule(org.mockito.ArgumentMatchers.eq(draft.id()), scheduleRequest.capture());
-        when(aiClient.chat(anyLong(), any(), any())).thenReturn(new AiClient.MeetingChatResponse("무엇을 하고 싶은지 알려주세요."));
-        meetingService.chat(userId, draft.id(), "조용하게 저녁을 먹고 싶어요");
+        when(aiClient.chat(anyLong(), any(), any(), any())).thenReturn(new AiClient.MeetingChatResponse(
+                "30일로 바꿔드릴게요. [DEBUG: {\"node\":\"context\"}]",
+                List.of(new AiClient.CandidateDate("2026-08-23", false), new AiClient.CandidateDate("2026-08-30", true))
+        ));
+        var chat = meetingService.chat(userId, draft.id(), "다른 날로 바꾸고 싶어요");
         when(aiClient.summarizeContext(anyLong(), any())).thenReturn(
                 new AiClient.MeetingContextResponse("정리했어요.", "조용한 저녁 식사")
         );
@@ -110,7 +114,7 @@ class GroupMeetingFlowIntegrationTest {
             return new AiClient.CandidateResponse(
                     request.requestId(), "OK", 120, "요약", List.of(), List.of(new AiClient.CandidateSuggestion(
                     1, "한식", "KAKAO", "place-1", "테스트 식당", "서울", 37.0, 127.0,
-                    null, "2026-08-23T18:00:00+09:00", "2026-08-23T20:00:00+09:00", null,
+                    null, "2026-08-30T18:00:00+09:00", "2026-08-30T20:00:00+09:00", null,
                     false, null, List.of(), List.of("사유"), List.of(),
                     List.of("https://example.com"), "2026-08-20T00:00:00Z"
             )), null, false);
@@ -121,7 +125,12 @@ class GroupMeetingFlowIntegrationTest {
         assertThat(availability.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(prepared.status()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(prepared.scheduleResolutionReason()).isEqualTo("참여자 모두가 가능한 날짜입니다.");
-        assertThat(scheduleRequest.getValue().commonAvailableDates()).containsExactly("2026-08-23");
+        assertThat(scheduleRequest.getValue().commonAvailableDates()).containsExactlyInAnyOrder("2026-08-23", "2026-08-30");
+        assertThat(chat.resolvedStartAt()).isEqualTo(java.time.Instant.parse("2026-08-30T09:00:00Z"));
+        assertThat(chat.resolvedEndAt()).isEqualTo(java.time.Instant.parse("2026-08-30T11:00:00Z"));
+        assertThat(chat.reply()).isEqualTo("30일로 바꿔드릴게요.");
+        assertThat(chat.candidateDates()).extracting(MeetingChatResponse.CandidateDateResponse::selected)
+                .containsExactly(false, true);
         assertThat(planning.status()).isEqualTo(MeetingStatus.PROPOSING);
         assertThat(planning.participantMemberIds()).containsExactly(group.members().getFirst().memberId());
     }

@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -253,7 +254,7 @@ public class MeetingService {
                         meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId()
                 ));
         validateScheduleResolution(response, commonDates);
-        meeting.resolveSchedule(response.resolvedStartAt(), response.resolvedEndAt(), response.reason());
+        meeting.resolveSchedule(response.resolvedStartAt(), response.resolvedEndAt(), userFacingAiText(response.reason()));
         return toResponse(meeting);
     }
 
@@ -367,13 +368,66 @@ public class MeetingService {
             throw new BusinessException("SCHEDULE_NOT_RESOLVED", "만남 일시가 정해진 뒤 채팅을 시작할 수 있습니다.", HttpStatus.CONFLICT);
         }
         String userMessage = message.trim();
-        AiClient.MeetingChatResponse response = aiClient.chat(meetingId, chatHistory(meetingId), userMessage);
-        if (response.reply() == null || response.reply().isBlank()) {
+        Set<LocalDate> commonDates = commonAvailableDates(meeting);
+        LocalDate currentDate = meeting.getResolvedStartAt().atZone(SERVICE_ZONE).toLocalDate();
+        List<AiClient.CandidateDate> candidateDates = commonDates.stream().sorted()
+                .map(date -> new AiClient.CandidateDate(date.toString(), date.equals(currentDate)))
+                .toList();
+        AiClient.MeetingChatResponse response = aiClient.chat(
+                meetingId, chatHistory(meetingId), userMessage, candidateDates
+        );
+        String reply = userFacingAiText(response.reply());
+        if (reply == null || reply.isBlank()) {
             throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
         }
+        List<AiClient.CandidateDate> returnedDates = response.candidateDates() == null
+                ? candidateDates
+                : response.candidateDates();
+        LocalDate selectedDate = validateAndFindSelectedDate(candidateDates, returnedDates);
+        if (!selectedDate.equals(currentDate)) {
+            LocalTime startTime = switch (meeting.getPreferredTimeOfDay()) {
+                case DAYTIME, ANY -> LocalTime.of(11, 0);
+                case LATE_AFTERNOON -> LocalTime.of(15, 0);
+                case EVENING -> LocalTime.of(18, 0);
+            };
+            var startAt = selectedDate.atTime(startTime).atZone(SERVICE_ZONE).toInstant();
+            meeting.resolveSchedule(startAt, startAt.plus(java.time.Duration.ofMinutes(120)), meeting.getScheduleResolutionReason());
+        }
         chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.USER, userMessage));
-        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, response.reply()));
-        return new MeetingChatResponse(response.reply());
+        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, reply));
+        return new MeetingChatResponse(
+                reply,
+                returnedDates.stream().map(value -> new MeetingChatResponse.CandidateDateResponse(
+                        value.date(), value.selected()
+                )).toList(),
+                meeting.getResolvedStartAt(),
+                meeting.getResolvedEndAt()
+        );
+    }
+
+    private LocalDate validateAndFindSelectedDate(
+            List<AiClient.CandidateDate> requested,
+            List<AiClient.CandidateDate> returned
+    ) {
+        try {
+            Set<String> requestedDates = requested.stream().map(AiClient.CandidateDate::date).collect(Collectors.toSet());
+            Set<String> returnedDates = returned.stream().map(AiClient.CandidateDate::date).collect(Collectors.toSet());
+            List<AiClient.CandidateDate> selected = returned.stream().filter(AiClient.CandidateDate::selected).toList();
+            if (returned.size() != requested.size() || returnedDates.size() != returned.size()
+                    || !returnedDates.equals(requestedDates) || selected.size() != 1) {
+                throw new IllegalArgumentException("candidateDates contract violation");
+            }
+            return LocalDate.parse(selected.getFirst().date());
+        } catch (RuntimeException exception) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답의 후보 날짜 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+    }
+
+    private String userFacingAiText(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceFirst("(?s)\\s*\\[DEBUG:.*$", "").trim();
     }
 
     private List<AiClient.ChatTurn> chatHistory(long meetingId) {

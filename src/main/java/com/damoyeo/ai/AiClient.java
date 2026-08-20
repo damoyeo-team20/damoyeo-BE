@@ -51,9 +51,10 @@ public class AiClient {
         return post("/ai/meetings/" + meetingId + "/candidates", request, CandidateResponse.class);
     }
 
-    public MeetingChatResponse chat(long meetingId, List<ChatTurn> history, String message) {
+    public MeetingChatResponse chat(long meetingId, List<ChatTurn> history, String message,
+                                    List<CandidateDate> candidateDates) {
         return post("/ai/meetings/" + meetingId + "/context/messages",
-                new MeetingChatRequest(history, message), MeetingChatResponse.class);
+                new MeetingChatRequest(history, message, candidateDates), MeetingChatResponse.class);
     }
 
     private <T> T post(String path, Object body, Class<T> responseType) {
@@ -124,6 +125,7 @@ public class AiClient {
                                       List<Tag> tags, List<String> sourceUrls, String checkedAt) {}
     public record Tag(String code, String label) {}
     public record ActionRequired(String type, String message, String hostRequest, List<String> conflictingPreferenceCodes) {}
-    public record MeetingChatRequest(List<ChatTurn> history, String message) {}
-    public record MeetingChatResponse(String reply) {}
+    public record CandidateDate(String date, boolean selected) {}
+    public record MeetingChatRequest(List<ChatTurn> history, String message, List<CandidateDate> candidateDates) {}
+    public record MeetingChatResponse(String reply, List<CandidateDate> candidateDates) {}
 }

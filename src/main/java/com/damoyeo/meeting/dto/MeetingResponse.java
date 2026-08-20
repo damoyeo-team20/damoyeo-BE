@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import com.damoyeo.user.domain.User;
 
 public record MeetingResponse(
@@ -22,6 +24,7 @@ public record MeetingResponse(
         Instant resolvedStartAt,
         Instant resolvedEndAt,
         String scheduleResolutionReason,
+        List<CandidateDateResponse> candidateDates,
         ConfirmedSuggestionResponse confirmedSuggestion,
         MeetingStatus status,
         List<Long> participantMemberIds,
@@ -35,6 +38,23 @@ public record MeetingResponse(
             Map<Long, User> users,
             Map<Long, List<LocalDate>> selectedDates
     ) {
+        Set<LocalDate> commonDates = null;
+        for (MeetingParticipant participant : participants) {
+            Set<LocalDate> participantDates = new LinkedHashSet<>(
+                    selectedDates.getOrDefault(participant.getId(), List.of())
+            );
+            if (commonDates == null) {
+                commonDates = participantDates;
+            } else {
+                commonDates.retainAll(participantDates);
+            }
+        }
+        LocalDate resolvedDate = meeting.getResolvedStartAt() == null
+                ? null
+                : meeting.getResolvedStartAt().atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate();
+        List<CandidateDateResponse> candidateDates = commonDates == null ? List.of() : commonDates.stream().sorted()
+                .map(date -> new CandidateDateResponse(date, date.equals(resolvedDate)))
+                .toList();
         return new MeetingResponse(
                 meeting.getId(),
                 meeting.getGroup().getId(),
@@ -47,13 +67,17 @@ public record MeetingResponse(
                 meeting.getResolvedStartAt(),
                 meeting.getResolvedEndAt(),
                 meeting.getScheduleResolutionReason(),
+                candidateDates,
                 meeting.getConfirmedSuggestion() == null ? null : new ConfirmedSuggestionResponse(
                         meeting.getConfirmedSuggestion().getId(),
                         meeting.getConfirmedSuggestion().getName(),
                         meeting.getConfirmedSuggestion().getCategory(),
                         meeting.getConfirmedSuggestion().getAddress(),
                         meeting.getConfirmedSuggestion().getProposedStartAt(),
-                        meeting.getConfirmedSuggestion().getProposedEndAt()
+                        meeting.getConfirmedSuggestion().getProposedEndAt(),
+                        meeting.getConfirmedSuggestion().getReasons() == null
+                                ? List.of()
+                                : meeting.getConfirmedSuggestion().getReasons()
                 ),
                 meeting.getStatus(),
                 participants.stream().map(participant -> participant.getGroupMember().getId()).toList(),
@@ -87,7 +111,11 @@ public record MeetingResponse(
             String category,
             String address,
             Instant proposedStartAt,
-            Instant proposedEndAt
+            Instant proposedEndAt,
+            List<String> reasons
     ) {
+    }
+
+    public record CandidateDateResponse(LocalDate date, boolean selected) {
     }
 }

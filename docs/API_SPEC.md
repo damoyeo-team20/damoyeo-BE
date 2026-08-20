@@ -457,7 +457,7 @@ GET /api/meetings/{meetingId}
 포함한다.
 
 확정된 일정은 `confirmedSuggestion`에 확정 장소의 `id`, `name`, `category`,
-`address`, `proposedStartAt`, `proposedEndAt`이 포함된다. 그룹 상세 화면에서 확정
+`address`, `proposedStartAt`, `proposedEndAt`, `reasons`가 포함된다. 그룹 상세 화면에서 확정
 일정 카드를 눌렀을 때 이 값을 사용해 완료 요약을 복원한다.
 
 ### 작성 중인 일정 삭제
@@ -500,7 +500,7 @@ PUT /api/meetings/{meetingId}/conditions
 - 날짜 시작일과 종료일은 조건 저장 요청에서 모두 필수다.
 - `preferredTimeOfDay`는 조건 저장 요청에서 필수다. 시간 제약이 없으면 `ANY`를 보낸다.
 - `purpose`는 최대 1000자, `region`은 최대 100자다.
-- AI context-chat이 미구현이므로 현재는 프론트가 `purpose`를 이 요청에 포함해야 한다.
+- `purpose`는 초안 조건에 저장할 수 있지만, 후보 생성 직전에는 조율 채팅 이력을 AI가 요약한 최종 `purpose`로 갱신한다.
 
 ### 일정 참여자 전체 교체
 
@@ -640,29 +640,21 @@ Request Body 없음. `READY_TO_PLAN` 상태에서 일정 생성자만 호출할 
 ```text
 초안 생성       일정 제출        전원 날짜 제출      조율 시작
 DRAFT  ─────▶  SURVEYING  ─────▶ READY_TO_PLAN ─────▶ PLANNING
+                                                               │
+                                      후보 생성 완료               ▼
+                                      CONFIRMED ◀── PROPOSING
 ```
 
-- `PROPOSING`, `CONFIRMED`, `FAILED`, `CANCELLED` 값은 정의돼 있지만 전이 API는 없다.
+- 후보 생성이 성공하면 `PROPOSING`, 후보를 확정하면 `CONFIRMED`로 전이한다.
+- 후보 재생성을 시작하면 `PROPOSING → READY_TO_PLAN`으로 돌아간다.
+- 확정 전 일정은 `POST /api/meetings/{meetingId}/cancel`로 `CANCELLED`처리할 수 있다.
 - 한 그룹에 진행 중 일정이 여러 개 생길 수 있다.
 - 그룹 응답의 `activeMeetings`는 진행 중인 일정을 최신순으로 모두 반환한다.
 
-## 7. 아직 구현되지 않은 API
+## 7. 구현 범위 참고
 
-다음 경로는 호출하면 `404`다.
-
-```text
-POST /api/users/me/preferences/chat
-POST /api/meetings/{meetingId}/context-chat
-```
-
-아래 기능도 아직 API가 없다.
-
-- AI 조율 실행 및 진행 단계 폴링/SSE
-- 장소 제안 목록과 재생성
-- 제안 확정 및 확정 일시 저장
-- `meeting_calendar_events`와 Google Calendar 일정 등록·취소
-- 알림 설정과 그룹 공지 전송
-- 일정 취소
+개인 선호 채팅, 일정 컨텍스트 채팅, 후보 생성·재생성·확정, 일정 취소,
+Google Calendar 등록 결과 조회가 구현돼 있다. 알림 수단과 그룹 공지 전송은 후속 범위다.
 
 ## 8. 프론트 구현 시 현재 임시 처리
 
@@ -688,6 +680,8 @@ AI팀이 제공한 규약을 내부 API의 기준으로 사용한다.
 | 방향 | Method | URI | 목적 |
 | --- | --- | --- | --- |
 | Back → AI | `POST` | `/ai/preferences/extract` | 개인 선호 추출과 사용자 답변 생성 |
+| Back → AI | `POST` | `/ai/meetings/{meetingId}/schedule` | 공통 가능 날짜에서 단일 만남 일시 선택 |
+| Back → AI | `POST` | `/ai/meetings/{meetingId}/context/messages` | 멀티턴 목적 채팅과 후보 날짜 변경 |
 | Back → AI | `POST` | `/ai/meetings/{meetingId}/context` | 모임 목적 한 문장 정리 |
 | Back → AI | `POST` | `/ai/meetings/{meetingId}/candidates` | 시간·장소 후보 최대 3개 생성 |
 | Back → AI | `POST` | `/ai/meetings/{meetingId}/revise` | 재생성 대화 한 턴 처리 |
@@ -741,32 +735,63 @@ POST /api/users/me/preferences/chat
 - 빈 `message`는 `400 Bad Request`다.
 - AI 응답 파싱 또는 검증 실패는 `502 AI_RESPONSE_INVALID`다.
 
-### 모임 목적 채팅
+### 모임 컨텍스트 채팅 (Front ↔ Back)
 
 ```http
-POST /api/meetings/{meetingId}/context-chat
+POST /api/meetings/{meetingId}/chat/messages
 ```
 
 ```json
 {
-  "messages": ["오랜만에 만나서 저녁 먹고 이야기하려고요"]
+  "message": "다른 날로 바꾸고 싶어요"
 }
 ```
 
 ```json
 {
-  "reply": "오랜만의 편안한 저녁 자리로 이해했어요.",
-  "purpose": "오랜만에 만나 대화하는 저녁 식사",
-  "meetingId": 20,
-  "updatedAt": "2026-08-19T07:15:00Z"
+  "reply": "네, 30일로 바꾸드릴게요.",
+  "candidateDates": [
+    { "date": "2026-08-23", "selected": false },
+    { "date": "2026-08-30", "selected": true }
+  ],
+  "resolvedStartAt": "2026-08-30T09:00:00Z",
+  "resolvedEndAt": "2026-08-30T11:00:00Z"
 }
 ```
 
-- `DRAFT` 상태에서 일정 생성자만 호출할 수 있다.
-- 사용자와 AI의 원문은 `meeting_chat_messages`에 순서대로 저장한다.
-- 정제된 목적은 `meetings.purpose`에 저장한다.
-- 압축 장기기억은 백엔드 내부에서 `meeting_memories`에 갱신한다.
-- 프론트는 원문·메모리 저장 방식을 알 필요가 없다.
+- 공통 가능 날짜가 모두 제출되고 `/schedule`이 완료된 `READY_TO_PLAN` 상태에서
+  일정 생성자만 호출할 수 있다.
+- 프론트는 사용자의 현재 메시지만 보낸다. 백엔드가 저장된 전체 이력과 후보 날짜를
+  AI 요청으로 조립한다.
+- `candidateDates`의 `selected=true`가 바뀌면 응답에 새 선택과 계산된 시작·종료 시각이
+  포함된다. 시각은 `preferredTimeOfDay`와 120분 규칙으로 계산한다.
+- 원문은 `meeting_chat_messages`에 순서대로 저장하고, 후보 생성 직전 `/context`로
+  요약한 최종 목적을 `meetings.purpose`에 저장한다.
+
+### 모임 컨텍스트 채팅 (Back ↔ AI)
+
+```http
+POST /ai/meetings/{meetingId}/context/messages
+```
+
+```json
+{
+  "history": [
+    { "role": "USER", "content": "오랜만에 만나요" },
+    { "role": "ASSISTANT", "content": "어떤 분위기를 원하세요?" }
+  ],
+  "message": "다른 날로 바꾸고 싶어요",
+  "candidateDates": [
+    { "date": "2026-08-23", "selected": true },
+    { "date": "2026-08-30", "selected": false }
+  ]
+}
+```
+
+AI는 `reply`와 같은 날짜 목록을 반환하며, 날짜를 바꿨다면 `selected` 위치만 이동시킨다.
+백엔드는 매 턴 전체 목록을 다시 보내고, 중복 없음·동일한 날짜 집합·단 하나의 선택을
+검증한다. 날짜 변경은 `meetings.resolved_start_at/resolved_end_at`을 갱신한다.
+`confirmed_start_at/confirmed_end_at`은 장소 후보를 최종 확정할 때만 갱신한다.
 
 ### AI 조율 실행
 
@@ -1025,7 +1050,7 @@ AI 후보 결과가 `NO_COMMON_SLOT`, `NO_CANDIDATE`, `CONFLICT`인 경우는 �
 | 다가오는 일정 없음 | JSON `null` | 현재 `200 OK` 빈 본문 |
 | 일정 참여자 저장 응답 | `{ "groupMemberIds": [...] }` | 전체 `MeetingResponse` 반환 |
 | 일정 조건 저장 응답 | 변경한 조건만 반환 | 전체 `MeetingResponse` 반환 |
-| 일정 조건 요청 | `purpose`를 context-chat에서 저장 | context-chat 미구현으로 `/conditions` 요청에 `purpose`를 함께 전달 |
+| 일정 조건 요청 | `purpose`를 context-chat에서 저장 | 초안은 `/conditions`, 최종 목적은 조율 채팅 요약으로 갱신 |
 | 선호조사 마감일 | `preferenceSurveyDeadline` 사용 | 필드 및 DB 컬럼 제거 |
 | 일정 수집 상태 | `COLLECTING_AVAILABILITY` 별도 상태 | 제거하고 제출 직후 `SURVEYING` 사용 |
 | 일정 상태 전이 | 마감일에 따라 `SURVEYING` 또는 `READY_TO_PLAN` | `DRAFT → SURVEYING → READY_TO_PLAN → PLANNING` |
@@ -1036,8 +1061,8 @@ AI 후보 결과가 `NO_COMMON_SLOT`, `NO_CANDIDATE`, `CONFLICT`인 경우는 �
 | 일정 재제출 | 확인 상태 초기화 후 재제출 가정 | 현재 재제출 및 제출 후 조건 수정 미지원 |
 | 내 선호 조회 | 계약만 존재 | `GET /api/users/me/preferences` 구현 완료 |
 | 선호 채팅 | 구현된 API로 표기 | `{message}`를 받아 AI 추출 후 UPSERT 또는 `UNMAPPED` 원문 저장 |
-| 모임 context-chat | 구현된 API로 표기 | 미구현, 호출 시 `404` |
-| AI 조율 | `/plan`에서 AI 실행 | 현재 `/plan`은 `PLANNING` 상태 전환만 수행 |
+| 모임 context-chat | 날짜와 분리된 목적 채팅 | `/chat/messages`에서 멀티턴을 저장하며 후보 날짜 변경도 처리 |
+| AI 조율 | `/plan`에서 AI 실행 | 컨텍스트 요약, AI 후보 생성, 저장, `PROPOSING` 전환을 동기 처리 |
 | 제안·확정·캘린더·알림 | 추후 구현 예정 | 현재 모두 미구현 |
 | AI API 공개 범위 | AI 원본 응답을 프론트가 직접 파싱할 가능성 | 프론트는 백엔드 고정 DTO만 사용하고 AI 원본 응답은 백엔드가 검증·정규화 |
 | AI 실행 방식 | `/plan` 단일 동기 요청 | 예정 계약은 `202 + runId`, 진행 상태 polling, `Idempotency-Key` 사용 |
