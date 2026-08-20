@@ -4,11 +4,12 @@
 
 1. 일정 생성자가 참여자·지역·날짜 탐색 범위·희망 시간대를 입력한다.
 2. 모든 참여자가 가능한 날짜를 제출하면 일정 상태는 `READY_TO_PLAN`이 된다.
-3. 이때부터 **일정 생성자만** 일정 조율 채팅을 여러 턴 진행한다.
-4. 매 채팅 턴에서 Back은 새 사용자 메시지와 이전의 압축 컨텍스트를 AI에 전달한다. AI는 사용자용 답변과 갱신된 압축 컨텍스트를 반환한다.
-5. 사용자가 `후보 생성`을 누르면 Back은 최신 컨텍스트, 확정된 지역·시간 조건, 가능 날짜, 개인 선호, 그룹 장기 기억을 AI에 전달한다. AI는 Kakao Local 등을 이용해 후보 1~3개를 반환한다.
-6. 후보가 표시된 상태는 `PROPOSING`이다. `다시 생성하기`를 누르면 `READY_TO_PLAN`으로 돌아가며, 기존 후보는 제외 목록에 넣고 같은 채팅을 이어간다.
-7. 후보 하나를 확정하면 `CONFIRMED`가 되며, Back은 확정 사실과 기존 그룹 요약을 AI에 보내 새 그룹 장기 요약을 생성한다. 확정 뒤에는 변경하지 않는다.
+3. 일정 생성자가 `일정 생성하기`를 누르면 Back은 공통 가능 날짜 목록을 AI에 전달하고, AI가 하나의 만남 일시를 선택한다. 공통 날짜가 없으면 Back은 AI를 호출하지 않고 `409 NO_COMMON_SLOT`을 반환한다.
+4. 확정된 만남 일시가 저장된 뒤부터 **일정 생성자만** 일정 조율 채팅을 여러 턴 진행한다.
+5. 매 채팅 턴에서 Back은 저장된 전체 원문 이력과 새 사용자 메시지를 AI에 전달한다.
+6. 사용자가 `후보 생성`을 누르면 Back은 전체 대화를 요약한 목적, 확정된 만남 일시, 공통 가능 날짜, 개인 선호, 그룹 장기 기억을 AI에 전달한다. AI는 Kakao Local 등을 이용해 후보 1~3개를 반환한다.
+7. 후보가 표시된 상태는 `PROPOSING`이다. `다시 생성하기`를 누르면 `READY_TO_PLAN`으로 돌아가며, 기존 후보는 제외 목록에 넣고 같은 채팅을 이어간다.
+8. 후보 하나를 확정하면 `CONFIRMED`가 되며, Back은 확정 사실과 기존 그룹 요약을 AI에 보내 새 그룹 장기 요약을 생성한다. 확정 뒤에는 변경하지 않는다.
 
 AI는 상태를 저장하지 않는다. 원문 채팅, 일정 단기 컨텍스트, 후보 이력, 그룹 장기 컨텍스트는 모두 Back DB가 관리한다.
 
@@ -29,25 +30,53 @@ AI는 상태를 저장하지 않는다. 원문 채팅, 일정 단기 컨텍스�
 
 - `Content-Type: application/json`
 - `camelCase`
-- `messages`에는 **이번 턴의 새 문장만** 넣는다.
+- 채팅 이력은 역할이 포함된 `history` 배열로 전달한다.
 - 날짜는 `YYYY-MM-DD`, 시간은 timezone offset 포함 ISO 8601이다.
 - AI의 응답 배열은 값이 없으면 `[]`이다.
 - 내부 인증은 `X-Internal-Api-Key` 공유 키를 사용한다.
 
-## 4. 일정 조율 채팅
+## 4. 만남 일시 선택
 
 ```http
-POST /ai/meetings/{meetingId}/chat
+POST /ai/meetings/{meetingId}/schedule
+```
+
+```json
+{
+  "commonAvailableDates": ["2026-08-23", "2026-08-30"],
+  "preferredTimeOfDay": "EVENING",
+  "durationMinutes": 120,
+  "timezone": "Asia/Seoul"
+}
+```
+
+응답:
+
+```json
+{
+  "resolvedStartAt": "2026-08-23T19:00:00+09:00",
+  "resolvedEndAt": "2026-08-23T21:00:00+09:00",
+  "reason": "참여자 모두가 가능한 날짜와 희망 시간대를 반영했습니다."
+}
+```
+
+Back은 선택 날짜가 `commonAvailableDates`에 포함되는지와 120분 길이를 검증한 뒤 저장한다.
+
+## 5. 일정 조율 채팅
+
+```http
+POST /ai/meetings/{meetingId}/context/messages
 ```
 
 요청:
 
 ```json
 {
-  "messages": ["조용하고 가성비 좋은 곳이면 좋겠어"],
-  "currentContext": null,
-  "currentSuggestions": [],
-  "excludedExternalPlaceIds": []
+  "history": [
+    { "role": "USER", "content": "조용한 식당을 찾고 싶어" },
+    { "role": "ASSISTANT", "content": "알겠어요. 더 알려주세요." }
+  ],
+  "message": "가성비도 중요해"
 }
 ```
 
@@ -57,18 +86,13 @@ POST /ai/meetings/{meetingId}/chat
 
 ```json
 {
-  "reply": "조용하고 가격 부담이 적은 곳을 우선으로 볼게요. 더 반영할 조건이 있으면 알려주세요!",
-  "updatedContext": "조용하고 가성비 좋은 분위기의 식사 모임",
-  "excludedExternalPlaceIds": [],
-  "uiChangeRequests": []
+  "reply": "조용하고 가격 부담이 적은 곳을 우선으로 볼게요. 더 반영할 조건이 있으면 알려주세요!"
 }
 ```
 
 - `reply`: 사용자에게 보여줄 자연어 답변. 기본은 반영 안내와 추가 조건 요청이며, 반드시 질문일 필요는 없다.
-- `updatedContext`: 1,000자 이하. Back이 다음 채팅·후보 생성에 쓰는 압축본이다.
-- `currentSuggestions`: 후보 생성 후 재생성 채팅일 때만 현재 후보를 넣는다. 각 원소는 `rank`, `externalPlaceId`, `name`, `category`, `proposedStartAt`, `proposedEndAt`, `reasons`를 가진다.
-- `excludedExternalPlaceIds`: 사용자가 후보 제외를 요청하면 최신 누적 목록을 반환한다.
-- `uiChangeRequests`: `REGION`, `DATE`, `TIME` 변경을 언급했을 때만 사용한다. Back은 별도 UI 확인 없이는 일정 조건을 바꾸지 않는다.
+- Back은 사용자 메시지와 AI 응답을 `meeting_chat_messages`에 원문 그대로 저장한다.
+- 후보 생성 직전에 Back이 별도 `/ai/meetings/{meetingId}/context` 호출로 전체 이력을 요약한다.
 
 ## 5. 후보 생성
 

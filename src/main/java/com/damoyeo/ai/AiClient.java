@@ -35,6 +35,10 @@ public class AiClient {
         return post("/ai/meetings/" + meetingId + "/context", new MeetingContextRequest(history), MeetingContextResponse.class);
     }
 
+    public ScheduleResolutionResponse resolveSchedule(long meetingId, ScheduleResolutionRequest request) {
+        return post("/ai/meetings/" + meetingId + "/schedule", request, ScheduleResolutionResponse.class);
+    }
+
     public CandidateResponse generateCandidates(long meetingId, CandidateRequest request) {
         return post("/ai/meetings/" + meetingId + "/candidates", request, CandidateResponse.class);
     }
@@ -77,12 +81,17 @@ public class AiClient {
     public record ChatTurn(String role, String content) {}
     public record MeetingContextRequest(List<ChatTurn> history) {}
     public record MeetingContextResponse(String reply, String purpose) {}
+    public record ScheduleResolutionRequest(List<String> commonAvailableDates, String preferredTimeOfDay,
+                                            Integer durationMinutes, String timezone) {}
+    public record ScheduleResolutionResponse(java.time.Instant resolvedStartAt, java.time.Instant resolvedEndAt,
+                                             String reason) {}
     public record CandidateRequest(String contractVersion, String requestId, CandidateMeeting meeting,
                                    List<CandidateParticipant> participants, Object meetingMemory, Object groupMemory,
                                    List<String> excludedExternalPlaceIds) {}
     public record CandidateMeeting(long id, String purpose, String region, String scheduleSearchFrom,
                                    String scheduleSearchTo, String preferredTimeOfDay, Integer durationMinutes,
-                                   String timezone, List<String> commonAvailableDates) {}
+                                   String timezone, List<String> commonAvailableDates,
+                                   String resolvedStartAt, String resolvedEndAt) {}
     public record CandidateParticipant(long userId, List<String> selectedDates, List<CandidatePreference> preferences) {}
     public record CandidatePreference(String vocabularyCode, String sentiment, String strength, String rawValue) {}
     public record CandidateResponse(String requestId, String status, Integer appliedDurationMinutes, String summary,

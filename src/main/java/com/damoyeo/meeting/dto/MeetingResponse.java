@@ -19,6 +19,8 @@ public record MeetingResponse(
         LocalDate scheduleSearchFrom,
         LocalDate scheduleSearchTo,
         PreferredTimeOfDay preferredTimeOfDay,
+        Instant resolvedStartAt,
+        Instant resolvedEndAt,
         MeetingStatus status,
         List<Long> participantMemberIds,
         List<ParticipantResponse> participants,
@@ -40,6 +42,8 @@ public record MeetingResponse(
                 meeting.getScheduleSearchFrom(),
                 meeting.getScheduleSearchTo(),
                 meeting.getPreferredTimeOfDay(),
+                meeting.getResolvedStartAt(),
+                meeting.getResolvedEndAt(),
                 meeting.getStatus(),
                 participants.stream().map(participant -> participant.getGroupMember().getId()).toList(),
                 participants.stream().map(participant -> {

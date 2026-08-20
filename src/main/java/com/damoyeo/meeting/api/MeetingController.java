@@ -113,6 +113,11 @@ public class MeetingController {
         return meetingService.findSuggestions(currentUserProvider.getCurrentUserId(), meetingId);
     }
 
+    @GetMapping("/meetings/{meetingId}/calendar-events")
+    public Object findCalendarEvents(@PathVariable long meetingId) {
+        return meetingService.findCalendarEvents(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
     @GetMapping("/meetings/{meetingId}/chat/messages")
     public Object findChatMessages(@PathVariable long meetingId) {
         return meetingService.findChatMessages(currentUserProvider.getCurrentUserId(), meetingId);

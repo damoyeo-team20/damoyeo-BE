@@ -1,6 +1,7 @@
 package com.damoyeo.meeting.service;
 
 import com.damoyeo.ai.AiClient;
+import com.damoyeo.calendar.GoogleCalendarService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.damoyeo.common.exception.BusinessException;
 import com.damoyeo.group.domain.GroupMember;
@@ -24,6 +25,7 @@ import com.damoyeo.meeting.repository.MeetingAvailableDateRepository;
 import com.damoyeo.meeting.repository.MeetingChatMessageRepository;
 import com.damoyeo.meeting.repository.MeetingMemoryRepository;
 import com.damoyeo.meeting.repository.MeetingSuggestionRepository;
+import com.damoyeo.meeting.repository.MeetingCalendarEventRepository;
 import com.damoyeo.preference.repository.UserPreferenceRepository;
 import com.damoyeo.user.repository.UserRepository;
 import com.damoyeo.user.domain.User;
@@ -60,6 +62,8 @@ public class MeetingService {
     private final ObjectMapper objectMapper;
     private final MeetingSuggestionRepository suggestionRepository;
     private final GroupMemoryRepository groupMemoryRepository;
+    private final GoogleCalendarService googleCalendarService;
+    private final MeetingCalendarEventRepository calendarEventRepository;
 
     public MeetingService(
             MeetingRepository meetingRepository,
@@ -74,7 +78,9 @@ public class MeetingService {
             MeetingMemoryRepository memoryRepository,
             ObjectMapper objectMapper,
             MeetingSuggestionRepository suggestionRepository,
-            GroupMemoryRepository groupMemoryRepository
+            GroupMemoryRepository groupMemoryRepository,
+            GoogleCalendarService googleCalendarService,
+            MeetingCalendarEventRepository calendarEventRepository
     ) {
         this.meetingRepository = meetingRepository;
         this.participantRepository = participantRepository;
@@ -89,6 +95,8 @@ public class MeetingService {
         this.objectMapper = objectMapper;
         this.suggestionRepository = suggestionRepository;
         this.groupMemoryRepository = groupMemoryRepository;
+        this.googleCalendarService = googleCalendarService;
+        this.calendarEventRepository = calendarEventRepository;
     }
 
     @Transactional
@@ -154,6 +162,13 @@ public class MeetingService {
                 .toList();
     }
 
+    public List<CalendarEventResponse> findCalendarEvents(long userId, long meetingId) {
+        requireAccessibleMeeting(userId, meetingId);
+        return calendarEventRepository.findAllByMeetingIdOrderByIdAsc(meetingId).stream()
+                .map(event -> new CalendarEventResponse(event.getUserId(), event.getStatus(), event.getGoogleEventId()))
+                .toList();
+    }
+
     public List<ChatMessageResponse> findChatMessages(long userId, long meetingId) {
         requireAccessibleMeeting(userId, meetingId);
         return chatMessageRepository.findAllByMeetingIdOrderByIdAsc(meetingId).stream()
@@ -193,6 +208,9 @@ public class MeetingService {
     public MeetingResponse startPlanning(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         ensureCommonAvailableDate(meeting);
+        if (meeting.getResolvedStartAt() == null || meeting.getResolvedEndAt() == null) {
+            throw new BusinessException("SCHEDULE_NOT_RESOLVED", "만남 일시가 정해진 뒤 후보를 생성할 수 있습니다.", HttpStatus.CONFLICT);
+        }
         List<AiClient.ChatTurn> history = chatHistory(meetingId);
         if (history.stream().noneMatch(message -> "USER".equals(message.role()))) {
             throw new BusinessException("MEETING_CONTEXT_REQUIRED", "후보를 생성하기 전에 모임에 대해 대화해 주세요.", HttpStatus.BAD_REQUEST);
@@ -216,11 +234,18 @@ public class MeetingService {
         return toResponse(meeting);
     }
 
-    /** 채팅 진입 전 공통 가능 날짜만 검증한다. 후보 생성이나 AI 호출은 하지 않는다. */
+    /** 채팅 진입 전 공통 가능 날짜를 AI에 전달해 하나의 만남 일시를 정한다. */
     @Transactional
     public MeetingResponse prepareForChat(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
-        ensureCommonAvailableDate(meeting);
+        Set<LocalDate> commonDates = commonAvailableDates(meeting);
+        AiClient.ScheduleResolutionResponse response = aiClient.resolveSchedule(meetingId,
+                new AiClient.ScheduleResolutionRequest(
+                        commonDates.stream().map(LocalDate::toString).toList(),
+                        meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId()
+                ));
+        validateScheduleResolution(response, commonDates);
+        meeting.resolveSchedule(response.resolvedStartAt(), response.resolvedEndAt());
         return toResponse(meeting);
     }
 
@@ -259,6 +284,16 @@ public class MeetingService {
         return commonDates;
     }
 
+    private void validateScheduleResolution(AiClient.ScheduleResolutionResponse response, Set<LocalDate> commonDates) {
+        if (response == null || response.resolvedStartAt() == null || response.resolvedEndAt() == null
+                || !response.resolvedEndAt().isAfter(response.resolvedStartAt())
+                || !java.time.Duration.between(response.resolvedStartAt(), response.resolvedEndAt())
+                .equals(java.time.Duration.ofMinutes(120))
+                || !commonDates.contains(response.resolvedStartAt().atZone(SERVICE_ZONE).toLocalDate())) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+    }
+
     @Transactional
     public MeetingResponse regenerate(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
@@ -289,6 +324,8 @@ public class MeetingService {
         MeetingSuggestion suggestion = suggestionRepository.findByIdAndMeetingId(suggestionId, meetingId)
                 .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "후보를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
         meeting.confirm(suggestion);
+        // Calendar 등록 실패는 사용자의 모임 확정을 되돌리지 않는다.
+        googleCalendarService.createForCreator(meeting, suggestion, userId);
         // 후보 확정은 사용자 의사결정이다. AI 장기기억 갱신 실패가 확정을 되돌리면 안 된다.
         try {
             updateGroupMemory(meeting, suggestion);
@@ -309,6 +346,9 @@ public class MeetingService {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.READY_TO_PLAN) {
             throw new BusinessException("MEETING_NOT_READY", "가능 날짜 제출 완료 후 조율 채팅을 시작할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+        if (meeting.getResolvedStartAt() == null || meeting.getResolvedEndAt() == null) {
+            throw new BusinessException("SCHEDULE_NOT_RESOLVED", "만남 일시가 정해진 뒤 채팅을 시작할 수 있습니다.", HttpStatus.CONFLICT);
         }
         String userMessage = message.trim();
         AiClient.MeetingChatResponse response = aiClient.chat(meetingId, chatHistory(meetingId), userMessage);
@@ -352,7 +392,8 @@ public class MeetingService {
                 new AiClient.CandidateMeeting(meeting.getId(), meeting.getPurpose(), meeting.getRegion(),
                         meeting.getScheduleSearchFrom().toString(), meeting.getScheduleSearchTo().toString(),
                         meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId(),
-                        commonAvailableDates(meeting).stream().map(LocalDate::toString).toList()),
+                        commonAvailableDates(meeting).stream().map(LocalDate::toString).toList(),
+                        meeting.getResolvedStartAt().toString(), meeting.getResolvedEndAt().toString()),
                 participants, Map.of(), groupMemory, excluded
         );
     }
@@ -400,6 +441,8 @@ public class MeetingService {
                                      java.time.Instant proposedStartAt, java.time.Instant proposedEndAt, String externalPlaceId,
                                      String externalUrl, String businessHours, boolean businessHoursVerified,
                                      Boolean openAtMeetingTime, List<String> reasons) {}
+    public record CalendarEventResponse(Long userId, com.damoyeo.meeting.domain.CalendarEventStatus status,
+                                        String googleEventId) {}
     public record ChatMessageResponse(Long id, ChatRole role, String content, java.time.Instant createdAt) {}
 
     private Meeting requireAccessibleMeeting(long userId, long meetingId) {
