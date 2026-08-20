@@ -20,6 +20,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ public class GroupService {
     private final UserRepository userRepository;
     private final UserPreferenceRepository preferenceRepository;
     private final MeetingRepository meetingRepository;
+    private final OAuth2AuthorizedClientService authorizedClientService;
 
     public GroupService(
             MeetingGroupRepository groupRepository,
@@ -42,7 +44,8 @@ public class GroupService {
             InviteCodeGenerator inviteCodeGenerator,
             UserRepository userRepository,
             UserPreferenceRepository preferenceRepository,
-            MeetingRepository meetingRepository
+            MeetingRepository meetingRepository,
+            OAuth2AuthorizedClientService authorizedClientService
     ) {
         this.groupRepository = groupRepository;
         this.memberRepository = memberRepository;
@@ -50,6 +53,7 @@ public class GroupService {
         this.userRepository = userRepository;
         this.preferenceRepository = preferenceRepository;
         this.meetingRepository = meetingRepository;
+        this.authorizedClientService = authorizedClientService;
     }
 
     @Transactional
@@ -112,6 +116,14 @@ public class GroupService {
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         Map<Long, Long> preferenceCounts = preferenceRepository.countAllByUserIds(userIds).stream()
                 .collect(Collectors.toMap(value -> value.userId(), value -> value.count()));
+        Map<Long, Boolean> calendarConnections = users.values().stream().collect(Collectors.toMap(
+                User::getId,
+                user -> {
+                    var client = authorizedClientService.loadAuthorizedClient("google", user.getGoogleSubject());
+                    return client != null && client.getAccessToken().getScopes()
+                            .contains("https://www.googleapis.com/auth/calendar.events");
+                }
+        ));
         List<Meeting> meetings = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(group.getId());
         long pastMeetingCount = meetings.stream()
                 .filter(meeting -> meeting.getStatus() == MeetingStatus.CONFIRMED)
@@ -125,7 +137,7 @@ public class GroupService {
                 .findFirst()
                 .map(meeting -> new GroupDetailResponse.ActiveMeetingResponse(meeting.getId(), meeting.getStatus().name()))
                 .orElse(null);
-        return GroupDetailResponse.of(group, members, users, preferenceCounts, pastMeetingCount, activeMeeting);
+        return GroupDetailResponse.of(group, members, users, preferenceCounts, calendarConnections, pastMeetingCount, activeMeeting);
     }
 
     private GroupSummaryResponse toSummaryResponse(MeetingGroup group) {

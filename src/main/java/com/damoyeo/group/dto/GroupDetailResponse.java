@@ -23,6 +23,7 @@ public record GroupDetailResponse(
             List<GroupMember> members,
             Map<Long, User> users,
             Map<Long, Long> preferenceCounts,
+            Map<Long, Boolean> calendarConnections,
             long pastMeetingCount,
             ActiveMeetingResponse activeMeeting
     ) {
@@ -36,7 +37,8 @@ public record GroupDetailResponse(
                         .map(member -> MemberResponse.of(
                                 member,
                                 users.get(member.getUserId()),
-                                preferenceCounts.getOrDefault(member.getUserId(), 0L)
+                                preferenceCounts.getOrDefault(member.getUserId(), 0L),
+                                calendarConnections.getOrDefault(member.getUserId(), false)
                         ))
                         .toList(),
                 activeMeeting,
@@ -52,14 +54,14 @@ public record GroupDetailResponse(
             long preferenceCount,
             boolean calendarConnected
     ) {
-        public static MemberResponse of(GroupMember member, User user, long preferenceCount) {
+        public static MemberResponse of(GroupMember member, User user, long preferenceCount, boolean calendarConnected) {
             return new MemberResponse(
                     member.getId(),
                     member.getUserId(),
                     user == null ? null : user.getNickname(),
                     member.getRole(),
                     preferenceCount,
-                    false
+                    calendarConnected
             );
         }
     }
