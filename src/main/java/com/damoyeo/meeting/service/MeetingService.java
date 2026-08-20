@@ -150,7 +150,9 @@ public class MeetingService {
                 .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "생성된 제안을 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
         return suggestionRepository.findAllByMeetingIdAndGenerationOrderByRankAsc(meetingId, generation).stream()
                 .map(value -> new SuggestionResponse(value.getId(), value.getGeneration(), value.getName(), value.getCategory(),
-                        value.getAddress(), value.getProposedStartAt(), value.getProposedEndAt(), value.getExternalPlaceId()))
+                        value.getAddress(), value.getProposedStartAt(), value.getProposedEndAt(), value.getExternalPlaceId(),
+                        value.getExternalUrl(), value.getBusinessHours(), value.isBusinessHoursVerified(),
+                        value.getOpenAtMeetingTime(), value.getReasons()))
                 .toList();
     }
 
@@ -416,7 +418,9 @@ public class MeetingService {
     }
 
     public record SuggestionResponse(Long id, int generation, String name, String category, String address,
-                                     java.time.Instant proposedStartAt, java.time.Instant proposedEndAt, String externalPlaceId) {}
+                                     java.time.Instant proposedStartAt, java.time.Instant proposedEndAt, String externalPlaceId,
+                                     String externalUrl, String businessHours, boolean businessHoursVerified,
+                                     Boolean openAtMeetingTime, List<String> reasons) {}
     public record ChatMessageResponse(Long id, ChatRole role, String content, java.time.Instant createdAt) {}
 
     private Meeting requireAccessibleMeeting(long userId, long meetingId) {
