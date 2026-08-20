@@ -18,26 +18,61 @@
 
 ## 사전 준비
 
-- JDK 21
 - Docker 및 Docker Compose
-- Git
 
-Gradle은 별도로 설치할 필요가 없습니다. 저장소에 포함된 Gradle Wrapper를 사용합니다.
+GHCR의 이미지를 사용하면 JDK나 Gradle을 설치할 필요가 없습니다. 백엔드 소스를 직접 수정해 실행하려면 JDK 21이 추가로 필요합니다.
 
 ## 시작하기
 
+백엔드 이미지와 PostgreSQL을 함께 실행합니다. `.env`는 필수가 아니며, 로컬 검증에 필요한 값은 Compose에 기본값으로 정의되어 있습니다.
+
 ```bash
-git clone git@github.com:damoyeo-team20/damoyeo-BE.git
-cd damoyeo-BE
-cp .env.example .env
+# compose.yml이 있는 디렉터리에서
+docker compose pull
 docker compose up -d
-./gradlew bootRun
+docker compose ps
 ```
 
-애플리케이션이 실행되면 아래 주소에서 상태를 확인할 수 있습니다.
+로컬 검증을 인증 없이 실행하려면 `ghcr.io/damoyeo-team20/damoyeo-be` 패키지가 public이어야 합니다. `docker compose pull`에서 `unauthorized`가 발생하는 private 패키지라면 `read:packages` 권한으로 GHCR에 먼저 로그인합니다.
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
+```
+
+두 서비스가 `healthy`가 되면 아래 주소에서 상태를 확인할 수 있습니다.
 
 ```text
 http://localhost:8080/actuator/health
+```
+
+### AI/FastAPI 로컬 연동
+
+FastAPI에서 백엔드와 DB에 접속할 때는 다음 로컬 주소를 사용합니다.
+
+```dotenv
+BACKEND_BASE_URL=http://localhost:8080
+DATABASE_URL=postgresql://damoyeo:damoyeo@localhost:5432/damoyeo
+INTERNAL_API_KEY=local-ai-key
+```
+
+`/internal/**` API를 호출할 때는 `X-Internal-Api-Key: local-ai-key` 헤더를 보냅니다. DB는 FastAPI에서 직접 접속할 수 있지만, 도메인 데이터를 변경하는 작업은 가능하면 백엔드 API를 통해 실행해야 됩니다.
+
+백엔드가 로컬 FastAPI를 호출할 수 있도록 FastAPI는 기본적으로 `0.0.0.0:8000`에 바인딩합니다.
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Compose는 이 서버를 `http://host.docker.internal:8000`으로 호출합니다. FastAPI의 포트가 다르면 `.env`의 `AI_PORT`를 변경합니다.
+
+### 백엔드 소스 개발
+
+소스를 직접 실행할 때는 DB만 띄운 뒤 Gradle Wrapper를 사용합니다.
+
+```bash
+cp .env.example .env
+docker compose up -d postgres
+./gradlew bootRun
 ```
 
 ## 테스트
@@ -48,7 +83,7 @@ http://localhost:8080/actuator/health
 
 테스트는 별도의 PostgreSQL 없이 H2 인메모리 DB를 사용합니다.
 
-## 로컬 DB 종료
+## 로컬 서비스 종료
 
 ```bash
 docker compose down
@@ -100,6 +135,10 @@ docker compose -f compose.prod.yml down
 | `POSTGRES_USER` | `damoyeo` | Docker PostgreSQL 사용자 |
 | `POSTGRES_PASSWORD` | `damoyeo` | Docker PostgreSQL 비밀번호 |
 | `POSTGRES_PORT` | `5432` | 호스트에 공개할 PostgreSQL 포트 |
+| `BACKEND_IMAGE` | `ghcr.io/damoyeo-team20/damoyeo-be:latest` | 로컬 Compose에서 사용할 백엔드 이미지 |
+| `BACKEND_PORT` | `8080` | 호스트에 공개할 백엔드 포트 |
+| `AI_PORT` | `8000` | 호스트에서 실행할 FastAPI 포트 |
+| `INTERNAL_API_KEY` | `local-ai-key` | 백엔드–AI 내부 API 공유 키 |
 | `GOOGLE_CLIENT_ID` | 없음 | Google OAuth 클라이언트 ID |
 | `GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth 클라이언트 보안 비밀 |
 | `GOOGLE_REDIRECT_URI` | 없음 | Google Cloud에 등록한 전체 리디렉션 URI |
