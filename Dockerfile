@@ -1,4 +1,5 @@
-FROM eclipse-temurin:21-jdk-alpine AS builder
+# Java JAR는 아키텍처에 독립적이므로 Gradle 빌드는 Actions 러너의 네이티브 플랫폼에서 한다.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /app
 
 # Gradle 래퍼와 설정 파일 복사
