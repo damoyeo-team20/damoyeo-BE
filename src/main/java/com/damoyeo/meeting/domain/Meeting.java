@@ -91,8 +91,8 @@ public class Meeting extends BaseEntity {
 
     public void submit(boolean hasParticipants) {
         requireDraft();
-        if (purpose == null || region == null) {
-            throw new BusinessException("INCOMPLETE_MEETING", "모임 목적과 지역을 입력해야 합니다.", HttpStatus.BAD_REQUEST);
+        if (region == null) {
+            throw new BusinessException("INCOMPLETE_MEETING", "지역을 입력해야 합니다.", HttpStatus.BAD_REQUEST);
         }
         if (scheduleSearchFrom == null || scheduleSearchTo == null) {
             throw new BusinessException("SEARCH_PERIOD_REQUIRED", "일정 탐색 시작일과 종료일을 입력해야 합니다.", HttpStatus.BAD_REQUEST);
@@ -148,6 +148,17 @@ public class Meeting extends BaseEntity {
 
     public void applyAiPurpose(String purpose) {
         requireDraft();
+        if (purpose == null || purpose.isBlank() || purpose.length() > 1000) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        this.purpose = purpose.trim();
+    }
+
+    /** 후보 생성 직전, 조사 완료 후 대화 원문을 AI가 요약해 확정한 목적이다. */
+    public void applyGeneratedPurpose(String purpose) {
+        if (status != MeetingStatus.READY_TO_PLAN) {
+            throw new BusinessException("MEETING_NOT_READY", "조율 준비가 완료된 일정만 목적을 생성할 수 있습니다.", HttpStatus.CONFLICT);
+        }
         if (purpose == null || purpose.isBlank() || purpose.length() > 1000) {
             throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
         }

@@ -59,6 +59,22 @@ class MeetingTest {
     }
 
     @Test
+    void submitsWithoutPurposeBecausePurposeIsCreatedAfterAvailabilityCollection() {
+        Meeting meeting = Meeting.draft(new MeetingGroup("대학교 동기", "ABCDEFGH"), 1L);
+        meeting.updateConditions(
+                null,
+                "건대",
+                LocalDate.of(2026, 8, 23),
+                LocalDate.of(2026, 9, 7),
+                PreferredTimeOfDay.EVENING
+        );
+
+        meeting.submit(true);
+
+        assertThat(meeting.getStatus()).isEqualTo(MeetingStatus.SURVEYING);
+    }
+
+    @Test
     void rejectsSubmissionWithoutPreferredTimeOfDay() {
         Meeting meeting = Meeting.draft(new MeetingGroup("대학교 동기", "ABCDEFGH"), 1L);
         meeting.updateConditions(

@@ -31,20 +31,17 @@ public class AiClient {
         return post("/ai/preferences/extract", new PreferenceExtractRequest(messages), PreferenceExtractResponse.class);
     }
 
-    public MeetingContextResponse summarizeContext(long meetingId, List<String> messages, String currentPurpose) {
-        return post("/ai/meetings/" + meetingId + "/context", new MeetingContextRequest(messages, currentPurpose), MeetingContextResponse.class);
+    public MeetingContextResponse summarizeContext(long meetingId, List<ChatTurn> history) {
+        return post("/ai/meetings/" + meetingId + "/context", new MeetingContextRequest(history), MeetingContextResponse.class);
     }
 
     public CandidateResponse generateCandidates(long meetingId, CandidateRequest request) {
         return post("/ai/meetings/" + meetingId + "/candidates", request, CandidateResponse.class);
     }
 
-    public RevisionResponse revise(long meetingId, RevisionRequest request) {
-        return post("/ai/meetings/" + meetingId + "/revise", request, RevisionResponse.class);
-    }
-
-    public MeetingChatResponse chat(long meetingId, MeetingChatRequest request) {
-        return post("/ai/meetings/" + meetingId + "/chat", request, MeetingChatResponse.class);
+    public MeetingChatResponse chat(long meetingId, List<ChatTurn> history, String message) {
+        return post("/ai/meetings/" + meetingId + "/context/messages",
+                new MeetingChatRequest(history, message), MeetingChatResponse.class);
     }
 
     public GroupMemoryResponse updateGroupMemory(long groupId, GroupMemoryRequest request) {
@@ -77,14 +74,15 @@ public class AiClient {
     public record PreferenceExtractResponse(String reply, List<ExtractedPreference> extractedPreferences) {}
     public record ExtractedPreference(String vocabularyCode, String displayName, String domain, String rawValue,
                                       String sentiment, String strength, String mappingType) {}
-    public record MeetingContextRequest(List<String> messages, String currentPurpose) {}
+    public record ChatTurn(String role, String content) {}
+    public record MeetingContextRequest(List<ChatTurn> history) {}
     public record MeetingContextResponse(String reply, String purpose) {}
     public record CandidateRequest(String contractVersion, String requestId, CandidateMeeting meeting,
                                    List<CandidateParticipant> participants, Object meetingMemory, Object groupMemory,
                                    List<String> excludedExternalPlaceIds) {}
     public record CandidateMeeting(long id, String purpose, String region, String scheduleSearchFrom,
                                    String scheduleSearchTo, String preferredTimeOfDay, Integer durationMinutes,
-                                   String timezone) {}
+                                   String timezone, List<String> commonAvailableDates) {}
     public record CandidateParticipant(long userId, List<String> selectedDates, List<CandidatePreference> preferences) {}
     public record CandidatePreference(String vocabularyCode, String sentiment, String strength, String rawValue) {}
     public record CandidateResponse(String requestId, String status, Integer appliedDurationMinutes, String summary,
@@ -97,19 +95,10 @@ public class AiClient {
                                       List<String> matchedPreferenceDomains, List<String> reasons,
                                       List<String> sourceUrls, String checkedAt) {}
     public record ActionRequired(String type, String message, String hostRequest, List<String> conflictingPreferenceCodes) {}
-    public record RevisionRequest(List<String> messages, String currentDraftPurpose,
-                                  List<CurrentSuggestion> currentSuggestions, List<String> excludedExternalPlaceIds) {}
-    public record CurrentSuggestion(Integer rank, String externalPlaceId, String name, String category,
-                                    String proposedStartAt, String proposedEndAt, List<String> reasons) {}
-    public record RevisionResponse(String reply, String draftPurpose, List<String> excludedExternalPlaceIds,
-                                   List<UiChangeRequest> uiChangeRequests) {}
-    public record UiChangeRequest(String field, String mentionedValue, String question) {}
     public record GroupMemoryRequest(String previousGroupSummary, ConfirmedMeeting confirmedMeeting) {}
     public record ConfirmedMeeting(long meetingId, String region, String category, String placeName,
                                    String address, String startAt, String endAt, String meetingContext) {}
     public record GroupMemoryResponse(String updatedGroupSummary) {}
-    public record MeetingChatRequest(List<String> messages, String currentContext,
-                                     List<CurrentSuggestion> currentSuggestions, List<String> excludedExternalPlaceIds) {}
-    public record MeetingChatResponse(String reply, String updatedContext, List<String> excludedExternalPlaceIds,
-                                      List<UiChangeRequest> uiChangeRequests) {}
+    public record MeetingChatRequest(List<ChatTurn> history, String message) {}
+    public record MeetingChatResponse(String reply) {}
 }

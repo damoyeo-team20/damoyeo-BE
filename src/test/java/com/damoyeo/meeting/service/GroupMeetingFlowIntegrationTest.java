@@ -88,6 +88,11 @@ class GroupMeetingFlowIntegrationTest {
                 draft.id(),
                 Set.of(LocalDate.of(2026, 8, 23))
         );
+        when(aiClient.chat(anyLong(), any(), any())).thenReturn(new AiClient.MeetingChatResponse("무엇을 하고 싶은지 알려주세요."));
+        meetingService.chat(userId, draft.id(), "조용하게 저녁을 먹고 싶어요");
+        when(aiClient.summarizeContext(anyLong(), any())).thenReturn(
+                new AiClient.MeetingContextResponse("정리했어요.", "조용한 저녁 식사")
+        );
         when(aiClient.generateCandidates(anyLong(), any(AiClient.CandidateRequest.class))).thenAnswer(invocation -> {
             AiClient.CandidateRequest request = invocation.getArgument(1);
             return new AiClient.CandidateResponse(
@@ -106,7 +111,7 @@ class GroupMeetingFlowIntegrationTest {
     }
 
     @Test
-    void storesRawChatMessagesAndCompressedMemorySeparately() {
+    void storesRawChatMessagesIndependentlyFromMeetingMemory() {
         long userId = userRepository.save(new User("google-subject-2", "memory@example.com", "메모리")).getId();
         GroupDetailResponse group = groupService.create(userId, new CreateGroupRequest("정기 모임"));
         MeetingResponse draft = meetingService.createDraft(userId, group.id());

@@ -14,8 +14,6 @@ import com.damoyeo.meeting.domain.MeetingChatMessage;
 import com.damoyeo.meeting.domain.ChatRole;
 import com.damoyeo.meeting.domain.MeetingMemory;
 import com.damoyeo.meeting.domain.MeetingSuggestion;
-import com.damoyeo.meeting.dto.ContextChatResponse;
-import com.damoyeo.meeting.dto.RevisionChatResponse;
 import com.damoyeo.meeting.dto.MeetingChatResponse;
 import com.damoyeo.meeting.dto.MeetingResponse;
 import com.damoyeo.meeting.dto.MeetingListItemResponse;
@@ -195,6 +193,16 @@ public class MeetingService {
     public MeetingResponse startPlanning(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         ensureCommonAvailableDate(meeting);
+        List<AiClient.ChatTurn> history = chatHistory(meetingId);
+        if (history.stream().noneMatch(message -> "USER".equals(message.role()))) {
+            throw new BusinessException("MEETING_CONTEXT_REQUIRED", "후보를 생성하기 전에 모임에 대해 대화해 주세요.", HttpStatus.BAD_REQUEST);
+        }
+        AiClient.MeetingContextResponse context = aiClient.summarizeContext(meetingId, history);
+        if (context.reply() == null || context.reply().isBlank()
+                || context.purpose() == null || context.purpose().isBlank() || context.purpose().length() > 1000) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        meeting.applyGeneratedPurpose(context.purpose());
         meeting.startPlanning();
         String requestId = UUID.randomUUID().toString();
         AiClient.CandidateResponse response = aiClient.generateCandidates(meetingId, candidateRequest(meeting, requestId));
@@ -209,6 +217,10 @@ public class MeetingService {
     }
 
     private void ensureCommonAvailableDate(Meeting meeting) {
+        commonAvailableDates(meeting);
+    }
+
+    private Set<LocalDate> commonAvailableDates(Meeting meeting) {
         List<MeetingParticipant> participants = participantRepository.findAllByMeetingIdOrderByIdAsc(meeting.getId());
         Set<LocalDate> commonDates = null;
         for (MeetingParticipant participant : participants) {
@@ -233,9 +245,10 @@ public class MeetingService {
             throw new BusinessException(
                     "NO_COMMON_SLOT",
                     "참여자 모두가 가능한 날짜가 없습니다. 날짜 범위를 조정하거나 다시 선택해 주세요.",
-                    HttpStatus.CONFLICT
+                HttpStatus.CONFLICT
             );
         }
+        return commonDates;
     }
 
     @Transactional
@@ -244,9 +257,18 @@ public class MeetingService {
         meeting.reopenForRegeneration();
         Map<String, Object> memory = new LinkedHashMap<>(memoryRepository.findById(meetingId)
                 .map(MeetingMemory::getMemory).orElse(Map.of()));
-        List<String> excluded = suggestionRepository.findFirstByMeetingIdOrderByGenerationDescRankAsc(meetingId)
+        List<String> latestExcluded = suggestionRepository.findFirstByMeetingIdOrderByGenerationDescRankAsc(meetingId)
                 .map(value -> suggestionRepository.findAllByMeetingIdAndGenerationOrderByRankAsc(meetingId, value.getGeneration()))
                 .orElse(List.of()).stream().map(MeetingSuggestion::getExternalPlaceId).toList();
+        List<String> excluded = new java.util.ArrayList<>();
+        if (memory.get("excludedExternalPlaceIds") instanceof List<?> previous) {
+            previous.stream().map(String::valueOf).forEach(excluded::add);
+        }
+        latestExcluded.forEach(id -> {
+            if (!excluded.contains(id)) {
+                excluded.add(id);
+            }
+        });
         memory.put("excludedExternalPlaceIds", excluded);
         memoryRepository.findById(meetingId).ifPresentOrElse(value -> value.update(memory),
                 () -> memoryRepository.save(new MeetingMemory(meeting, memory)));
@@ -275,106 +297,25 @@ public class MeetingService {
     }
 
     @Transactional
-    public ContextChatResponse chatContext(long userId, long meetingId, String message) {
-        Meeting meeting = requireEditableMeeting(userId, meetingId);
-        String userMessage = message.trim();
-        AiClient.MeetingContextResponse response = aiClient.summarizeContext(
-                meetingId, List.of(userMessage), meeting.getPurpose()
-        );
-        if (response.reply() == null || response.reply().isBlank()
-                || response.purpose() == null || response.purpose().isBlank() || response.purpose().length() > 1000) {
-            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
-        }
-        meeting.applyAiPurpose(response.purpose());
-        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.USER, userMessage));
-        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, response.reply()));
-        return new ContextChatResponse(response.reply(), response.purpose());
-    }
-
-    @Transactional
-    @SuppressWarnings("unchecked")
-    public RevisionChatResponse chatRevision(long userId, long meetingId, String message) {
-        Meeting meeting = requireAccessibleMeeting(userId, meetingId);
-        if (!meeting.getCreatedBy().equals(userId)) {
-            throw new BusinessException("MEETING_EDIT_FORBIDDEN", "일정을 만든 사용자만 재생성을 요청할 수 있습니다.", HttpStatus.FORBIDDEN);
-        }
-        if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.PROPOSING) {
-            throw new BusinessException("MEETING_NOT_PROPOSING", "제안이 생성된 일정만 재생성할 수 있습니다.", HttpStatus.CONFLICT);
-        }
-        Map<String, Object> memory = new LinkedHashMap<>(memoryRepository.findById(meetingId)
-                .map(MeetingMemory::getMemory)
-                .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "생성된 제안을 찾을 수 없습니다.", HttpStatus.NOT_FOUND)));
-        Map<String, Object> candidateResult = (Map<String, Object>) memory.get("candidateResult");
-        if (candidateResult == null || !(candidateResult.get("suggestions") instanceof List<?> rawSuggestions)) {
-            throw new BusinessException("SUGGESTION_NOT_FOUND", "생성된 제안을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
-        }
-        List<AiClient.CurrentSuggestion> suggestions = rawSuggestions.stream().map(raw -> {
-            Map<String, Object> value = (Map<String, Object>) raw;
-            return new AiClient.CurrentSuggestion(
-                    ((Number) value.get("rank")).intValue(), (String) value.get("externalPlaceId"),
-                    (String) value.get("name"), (String) value.get("category"),
-                    (String) value.get("proposedStartAt"), (String) value.get("proposedEndAt"),
-                    (List<String>) value.get("reasons")
-            );
-        }).toList();
-        Map<String, Object> priorDraft = memory.get("revisionDraft") instanceof Map<?, ?> value
-                ? (Map<String, Object>) value : Map.of();
-        String draftPurpose = (String) priorDraft.getOrDefault("draftPurpose", meeting.getPurpose());
-        List<String> excluded = (List<String>) priorDraft.getOrDefault("excludedExternalPlaceIds", List.of());
-        AiClient.RevisionResponse response = aiClient.revise(meetingId,
-                new AiClient.RevisionRequest(List.of(message.trim()), draftPurpose, suggestions, excluded));
-        if (response.reply() == null || response.reply().isBlank() || response.draftPurpose() == null
-                || response.draftPurpose().isBlank() || response.draftPurpose().length() > 1000
-                || response.excludedExternalPlaceIds() == null || response.uiChangeRequests() == null) {
-            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
-        }
-        List<RevisionChatResponse.UiChangeRequest> changes = response.uiChangeRequests().stream()
-                .map(value -> new RevisionChatResponse.UiChangeRequest(value.field(), value.mentionedValue(), value.question()))
-                .toList();
-        memory.put("revisionDraft", Map.of(
-                "draftPurpose", response.draftPurpose(),
-                "excludedExternalPlaceIds", response.excludedExternalPlaceIds(),
-                "uiChangeRequests", changes
-        ));
-        memoryRepository.findById(meetingId).orElseThrow().update(memory);
-        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.USER, message.trim()));
-        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, response.reply()));
-        return new RevisionChatResponse(response.reply(), response.draftPurpose(), response.excludedExternalPlaceIds(), changes);
-    }
-
-    @Transactional
     public MeetingChatResponse chat(long userId, long meetingId, String message) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.READY_TO_PLAN) {
             throw new BusinessException("MEETING_NOT_READY", "가능 날짜 제출 완료 후 조율 채팅을 시작할 수 있습니다.", HttpStatus.CONFLICT);
         }
         String userMessage = message.trim();
-        Map<String, Object> memory = new LinkedHashMap<>(memoryRepository.findById(meetingId)
-                .map(MeetingMemory::getMemory).orElse(Map.of()));
-        String currentContext = memory.get("meetingContext") instanceof String value ? value : null;
-        List<String> excluded = memory.get("excludedExternalPlaceIds") instanceof List<?> values
-                ? values.stream().map(String::valueOf).toList() : List.of();
-        List<AiClient.CurrentSuggestion> currentSuggestions = suggestionRepository.findFirstByMeetingIdOrderByGenerationDescRankAsc(meetingId)
-                .map(value -> suggestionRepository.findAllByMeetingIdAndGenerationOrderByRankAsc(meetingId, value.getGeneration()))
-                .orElse(List.of()).stream().map(value -> new AiClient.CurrentSuggestion(value.getRank(),
-                        value.getExternalPlaceId(), value.getName(), value.getCategory(), value.getProposedStartAt().toString(),
-                        value.getProposedEndAt().toString(), List.of())).toList();
-        AiClient.MeetingChatResponse response = aiClient.chat(meetingId,
-                new AiClient.MeetingChatRequest(List.of(userMessage), currentContext, currentSuggestions, excluded));
-        if (response.reply() == null || response.reply().isBlank() || response.updatedContext() == null
-                || response.updatedContext().isBlank() || response.updatedContext().length() > 1000
-                || response.excludedExternalPlaceIds() == null || response.uiChangeRequests() == null) {
+        AiClient.MeetingChatResponse response = aiClient.chat(meetingId, chatHistory(meetingId), userMessage);
+        if (response.reply() == null || response.reply().isBlank()) {
             throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
         }
-        List<RevisionChatResponse.UiChangeRequest> changes = response.uiChangeRequests().stream()
-                .map(value -> new RevisionChatResponse.UiChangeRequest(value.field(), value.mentionedValue(), value.question())).toList();
-        memory.put("meetingContext", response.updatedContext());
-        memory.put("excludedExternalPlaceIds", response.excludedExternalPlaceIds());
-        memoryRepository.findById(meetingId).ifPresentOrElse(value -> value.update(memory),
-                () -> memoryRepository.save(new MeetingMemory(meeting, memory)));
         chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.USER, userMessage));
         chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, response.reply()));
-        return new MeetingChatResponse(response.reply(), response.updatedContext(), response.excludedExternalPlaceIds(), changes);
+        return new MeetingChatResponse(response.reply());
+    }
+
+    private List<AiClient.ChatTurn> chatHistory(long meetingId) {
+        return chatMessageRepository.findAllByMeetingIdOrderByIdAsc(meetingId).stream()
+                .map(message -> new AiClient.ChatTurn(message.getRole().name(), message.getContent()))
+                .toList();
     }
 
     private AiClient.CandidateRequest candidateRequest(Meeting meeting, String requestId) {
@@ -395,16 +336,16 @@ public class MeetingService {
                     return new AiClient.CandidateParticipant(participantUserId, dates, preferences);
                 }).toList();
         Map<String, Object> memory = memoryRepository.findById(meeting.getId()).map(MeetingMemory::getMemory).orElse(Map.of());
-        String meetingContext = memory.get("meetingContext") instanceof String value ? value : meeting.getPurpose();
         Object groupMemory = groupMemoryRepository.findById(meeting.getGroup().getId()).map(GroupMemory::getSummary).map(summary -> Map.of("summary", summary)).orElse(null);
         List<String> excluded = memory.get("excludedExternalPlaceIds") instanceof List<?> values
                 ? values.stream().map(String::valueOf).toList() : List.of();
         return new AiClient.CandidateRequest(
                 "1.0", requestId,
-                new AiClient.CandidateMeeting(meeting.getId(), meetingContext, meeting.getRegion(),
+                new AiClient.CandidateMeeting(meeting.getId(), meeting.getPurpose(), meeting.getRegion(),
                         meeting.getScheduleSearchFrom().toString(), meeting.getScheduleSearchTo().toString(),
-                        meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId()),
-                participants, memory, groupMemory, excluded
+                        meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId(),
+                        commonAvailableDates(meeting).stream().map(LocalDate::toString).toList()),
+                participants, Map.of(), groupMemory, excluded
         );
     }
 
@@ -434,8 +375,7 @@ public class MeetingService {
 
     private void updateGroupMemory(Meeting meeting, MeetingSuggestion suggestion) {
         String previous = groupMemoryRepository.findById(meeting.getGroup().getId()).map(GroupMemory::getSummary).orElse(null);
-        String context = memoryRepository.findById(meeting.getId()).map(MeetingMemory::getMemory)
-                .map(memory -> String.valueOf(memory.getOrDefault("meetingContext", meeting.getPurpose()))).orElse(meeting.getPurpose());
+        String context = meeting.getPurpose();
         AiClient.GroupMemoryResponse response = aiClient.updateGroupMemory(meeting.getGroup().getId(),
                 new AiClient.GroupMemoryRequest(previous, new AiClient.ConfirmedMeeting(meeting.getId(), meeting.getRegion(),
                         suggestion.getCategory(), suggestion.getName(), suggestion.getAddress(), suggestion.getProposedStartAt().toString(),
