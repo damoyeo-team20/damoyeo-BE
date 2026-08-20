@@ -325,7 +325,10 @@ public class MeetingService {
                 .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "후보를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
         meeting.confirm(suggestion);
         // Calendar 등록 실패는 사용자의 모임 확정을 되돌리지 않는다.
-        googleCalendarService.createForCreator(meeting, suggestion, userId);
+        List<Long> participantUserIds = participantRepository.findAllByMeetingIdOrderByIdAsc(meetingId).stream()
+                .map(participant -> participant.getGroupMember().getUserId())
+                .toList();
+        googleCalendarService.createForParticipants(meeting, suggestion, participantUserIds);
         // 후보 확정은 사용자 의사결정이다. AI 장기기억 갱신 실패가 확정을 되돌리면 안 된다.
         try {
             updateGroupMemory(meeting, suggestion);

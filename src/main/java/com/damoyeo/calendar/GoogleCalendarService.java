@@ -8,6 +8,7 @@ import com.damoyeo.meeting.repository.MeetingCalendarEventRepository;
 import com.damoyeo.user.domain.User;
 import com.damoyeo.user.repository.UserRepository;
 import java.time.ZoneId;
+import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
@@ -38,8 +39,12 @@ public class GoogleCalendarService {
         this.restClient = restClientBuilder.baseUrl("https://www.googleapis.com/calendar/v3").build();
     }
 
-    /** MVP: 확정 요청을 한 일정 생성자 본인의 primary calendar에만 등록한다. */
-    public void createForCreator(Meeting meeting, MeetingSuggestion suggestion, long userId) {
+    /** 선택된 일정 참여자 전원의 primary calendar에 각각 동일한 이벤트를 등록한다. */
+    public void createForParticipants(Meeting meeting, MeetingSuggestion suggestion, List<Long> userIds) {
+        userIds.forEach(userId -> createForUser(meeting, suggestion, userId));
+    }
+
+    private void createForUser(Meeting meeting, MeetingSuggestion suggestion, long userId) {
         User user = userRepository.findById(userId).orElseThrow();
         OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
                 GOOGLE_REGISTRATION_ID, user.getGoogleSubject()
