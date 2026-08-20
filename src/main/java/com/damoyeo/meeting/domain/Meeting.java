@@ -59,6 +59,10 @@ public class Meeting extends BaseEntity {
     @Column(name = "confirmed_end_at")
     private Instant confirmedEndAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "confirmed_suggestion_id")
+    private MeetingSuggestion confirmedSuggestion;
+
     protected Meeting() {
     }
 
@@ -123,6 +127,23 @@ public class Meeting extends BaseEntity {
             throw new BusinessException("MEETING_NOT_READY", "조율을 시작할 수 없는 상태입니다.", HttpStatus.CONFLICT);
         }
         status = MeetingStatus.PLANNING;
+    }
+
+    public void reopenForRegeneration() {
+        if (status != MeetingStatus.PROPOSING) {
+            throw new BusinessException("MEETING_NOT_PROPOSING", "제안이 생성된 일정만 다시 조율할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+        status = MeetingStatus.READY_TO_PLAN;
+    }
+
+    public void confirm(MeetingSuggestion suggestion) {
+        if (status != MeetingStatus.PROPOSING) {
+            throw new BusinessException("MEETING_NOT_PROPOSING", "제안이 생성된 일정만 확정할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+        confirmedSuggestion = suggestion;
+        confirmedStartAt = suggestion.getProposedStartAt();
+        confirmedEndAt = suggestion.getProposedEndAt();
+        status = MeetingStatus.CONFIRMED;
     }
 
     public void applyAiPurpose(String purpose) {
@@ -207,4 +228,6 @@ public class Meeting extends BaseEntity {
     public Instant getConfirmedEndAt() {
         return confirmedEndAt;
     }
+
+    public MeetingSuggestion getConfirmedSuggestion() { return confirmedSuggestion; }
 }

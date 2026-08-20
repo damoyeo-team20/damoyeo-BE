@@ -14,6 +14,9 @@ import com.damoyeo.meeting.dto.ContextChatRequest;
 import com.damoyeo.meeting.dto.ContextChatResponse;
 import com.damoyeo.meeting.dto.RevisionChatRequest;
 import com.damoyeo.meeting.dto.RevisionChatResponse;
+import com.damoyeo.meeting.dto.ConfirmMeetingRequest;
+import com.damoyeo.meeting.dto.MeetingChatRequest;
+import com.damoyeo.meeting.dto.MeetingChatResponse;
 import com.damoyeo.meeting.service.MeetingAvailabilityService;
 import com.damoyeo.meeting.service.MeetingService;
 import jakarta.validation.Valid;
@@ -94,9 +97,34 @@ public class MeetingController {
         return meetingService.startPlanning(currentUserProvider.getCurrentUserId(), meetingId);
     }
 
+    @PostMapping("/meetings/{meetingId}/generate")
+    public MeetingResponse generate(@PathVariable long meetingId) {
+        return meetingService.startPlanning(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @PostMapping("/meetings/{meetingId}/regenerate")
+    public MeetingResponse regenerate(@PathVariable long meetingId) {
+        return meetingService.regenerate(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @PostMapping("/meetings/{meetingId}/confirm")
+    public MeetingResponse confirm(@PathVariable long meetingId, @Valid @RequestBody ConfirmMeetingRequest request) {
+        return meetingService.confirm(currentUserProvider.getCurrentUserId(), meetingId, request.suggestionId());
+    }
+
     @GetMapping("/meetings/{meetingId}/suggestions")
     public Object findSuggestions(@PathVariable long meetingId) {
         return meetingService.findSuggestions(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @GetMapping("/meetings/{meetingId}/chat/messages")
+    public Object findChatMessages(@PathVariable long meetingId) {
+        return meetingService.findChatMessages(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @PostMapping("/meetings/{meetingId}/chat/messages")
+    public MeetingChatResponse chat(@PathVariable long meetingId, @Valid @RequestBody MeetingChatRequest request) {
+        return meetingService.chat(currentUserProvider.getCurrentUserId(), meetingId, request.message());
     }
 
     @PostMapping("/meetings/{meetingId}/context-chat")

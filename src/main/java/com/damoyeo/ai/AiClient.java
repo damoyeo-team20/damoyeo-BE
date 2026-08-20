@@ -43,6 +43,14 @@ public class AiClient {
         return post("/ai/meetings/" + meetingId + "/revise", request, RevisionResponse.class);
     }
 
+    public MeetingChatResponse chat(long meetingId, MeetingChatRequest request) {
+        return post("/ai/meetings/" + meetingId + "/chat", request, MeetingChatResponse.class);
+    }
+
+    public GroupMemoryResponse updateGroupMemory(long groupId, GroupMemoryRequest request) {
+        return post("/ai/groups/" + groupId + "/memory", request, GroupMemoryResponse.class);
+    }
+
     private <T> T post(String path, Object body, Class<T> responseType) {
         try {
             T response = restClient.post().uri(path).body(body).retrieve().body(responseType);
@@ -72,7 +80,7 @@ public class AiClient {
     public record MeetingContextRequest(List<String> messages, String currentPurpose) {}
     public record MeetingContextResponse(String reply, String purpose) {}
     public record CandidateRequest(String contractVersion, String requestId, CandidateMeeting meeting,
-                                   List<CandidateParticipant> participants, Object meetingMemory,
+                                   List<CandidateParticipant> participants, Object meetingMemory, Object groupMemory,
                                    List<String> excludedExternalPlaceIds) {}
     public record CandidateMeeting(long id, String purpose, String region, String scheduleSearchFrom,
                                    String scheduleSearchTo, String preferredTimeOfDay, Integer durationMinutes,
@@ -96,4 +104,12 @@ public class AiClient {
     public record RevisionResponse(String reply, String draftPurpose, List<String> excludedExternalPlaceIds,
                                    List<UiChangeRequest> uiChangeRequests) {}
     public record UiChangeRequest(String field, String mentionedValue, String question) {}
+    public record GroupMemoryRequest(String previousGroupSummary, ConfirmedMeeting confirmedMeeting) {}
+    public record ConfirmedMeeting(long meetingId, String region, String category, String placeName,
+                                   String address, String startAt, String endAt, String meetingContext) {}
+    public record GroupMemoryResponse(String updatedGroupSummary) {}
+    public record MeetingChatRequest(List<String> messages, String currentContext,
+                                     List<CurrentSuggestion> currentSuggestions, List<String> excludedExternalPlaceIds) {}
+    public record MeetingChatResponse(String reply, String updatedContext, List<String> excludedExternalPlaceIds,
+                                      List<UiChangeRequest> uiChangeRequests) {}
 }
