@@ -4,6 +4,11 @@ import com.damoyeo.common.exception.BusinessException;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.BufferingClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -13,6 +18,8 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class AiClient {
 
+    private static final Logger log = LoggerFactory.getLogger(AiClient.class);
+
     private final RestClient restClient;
 
     public AiClient(
@@ -20,10 +27,11 @@ public class AiClient {
             @Value("${app.ai.base-url:http://localhost:8000}") String baseUrl,
             @Value("${INTERNAL_API_KEY:}") String internalApiKey
     ) {
-        RestClient.Builder configured = builder.baseUrl(baseUrl);
+        RestClient.Builder configured = builder.clone().baseUrl(baseUrl);
         if (!internalApiKey.isBlank()) {
             configured.defaultHeader("X-Internal-Api-Key", internalApiKey);
         }
+        configured.requestFactory(new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory()));
         this.restClient = configured.build();
     }
 
@@ -48,13 +56,14 @@ public class AiClient {
                 new MeetingChatRequest(history, message), MeetingChatResponse.class);
     }
 
-    public GroupMemoryResponse updateGroupMemory(long groupId, GroupMemoryRequest request) {
-        return post("/ai/groups/" + groupId + "/memory", request, GroupMemoryResponse.class);
-    }
-
     private <T> T post(String path, Object body, Class<T> responseType) {
         try {
-            T response = restClient.post().uri(path).body(body).retrieve().body(responseType);
+            T response = restClient.post()
+                    .uri(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(responseType);
             if (response == null) {
                 throw invalidResponse();
             }
@@ -62,12 +71,24 @@ public class AiClient {
         } catch (BusinessException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
+            log.warn("AI request failed: path={}, status={}, response={}",
+                    path, exception.getStatusCode(), sanitizedResponse(exception.getResponseBodyAsString()));
             throw new BusinessException("AI_SERVICE_ERROR", "AI 서비스 요청에 실패했습니다.", HttpStatus.BAD_GATEWAY);
         } catch (ResourceAccessException exception) {
+            log.warn("AI service unavailable: path={}, cause={}, rootCause={}", path, exception.getMessage(),
+                    exception.getCause());
             throw new BusinessException("AI_UNAVAILABLE", "AI 서비스에 연결할 수 없습니다.", HttpStatus.SERVICE_UNAVAILABLE);
         } catch (RuntimeException exception) {
             throw invalidResponse();
         }
+    }
+
+    private String sanitizedResponse(String response) {
+        if (response == null || response.isBlank()) {
+            return "<empty>";
+        }
+        return response.substring(0, Math.min(response.length(), 1000))
+                .replaceAll("[\\r\\n]", " ");
     }
 
     private BusinessException invalidResponse() {
@@ -86,28 +107,23 @@ public class AiClient {
     public record ScheduleResolutionResponse(java.time.Instant resolvedStartAt, java.time.Instant resolvedEndAt,
                                              String reason) {}
     public record CandidateRequest(String contractVersion, String requestId, CandidateMeeting meeting,
-                                   List<CandidateParticipant> participants, Object meetingMemory, Object groupMemory,
+                                   ConfirmedSlot confirmedSlot, List<CandidateParticipant> participants, Object meetingMemory,
                                    List<String> excludedExternalPlaceIds) {}
-    public record CandidateMeeting(long id, String purpose, String region, String scheduleSearchFrom,
-                                   String scheduleSearchTo, String preferredTimeOfDay, Integer durationMinutes,
-                                   String timezone, List<String> commonAvailableDates,
-                                   String resolvedStartAt, String resolvedEndAt) {}
-    public record CandidateParticipant(long userId, List<String> selectedDates, List<CandidatePreference> preferences) {}
+    public record CandidateMeeting(long id, String purpose, String region) {}
+    public record ConfirmedSlot(String confirmedStartAt, String confirmedEndAt) {}
+    public record CandidateParticipant(long userId, List<CandidatePreference> preferences) {}
     public record CandidatePreference(String vocabularyCode, String sentiment, String strength, String rawValue) {}
     public record CandidateResponse(String requestId, String status, Integer appliedDurationMinutes, String summary,
-                                    List<CandidateSuggestion> suggestions, ActionRequired actionRequired,
+                                    List<Tag> meetingTags, List<CandidateSuggestion> suggestions, ActionRequired actionRequired,
                                     Boolean verificationTimedOut) {}
     public record CandidateSuggestion(Integer rank, String category, String placeProvider, String externalPlaceId,
                                       String name, String address, Double latitude, Double longitude, String externalUrl,
                                       String proposedStartAt, String proposedEndAt, String businessHours,
                                       Boolean businessHoursVerified, Boolean openAtMeetingTime,
                                       List<String> matchedPreferenceDomains, List<String> reasons,
-                                      List<String> sourceUrls, String checkedAt) {}
+                                      List<Tag> tags, List<String> sourceUrls, String checkedAt) {}
+    public record Tag(String code, String label) {}
     public record ActionRequired(String type, String message, String hostRequest, List<String> conflictingPreferenceCodes) {}
-    public record GroupMemoryRequest(String previousGroupSummary, ConfirmedMeeting confirmedMeeting) {}
-    public record ConfirmedMeeting(long meetingId, String region, String category, String placeName,
-                                   String address, String startAt, String endAt, String meetingContext) {}
-    public record GroupMemoryResponse(String updatedGroupSummary) {}
     public record MeetingChatRequest(List<ChatTurn> history, String message) {}
     public record MeetingChatResponse(String reply) {}
 }

@@ -104,10 +104,11 @@ class GroupMeetingFlowIntegrationTest {
         when(aiClient.generateCandidates(anyLong(), any(AiClient.CandidateRequest.class))).thenAnswer(invocation -> {
             AiClient.CandidateRequest request = invocation.getArgument(1);
             return new AiClient.CandidateResponse(
-                    request.requestId(), "OK", 120, "요약", List.of(new AiClient.CandidateSuggestion(
+                    request.requestId(), "OK", 120, "요약", List.of(), List.of(new AiClient.CandidateSuggestion(
                     1, "한식", "KAKAO", "place-1", "테스트 식당", "서울", 37.0, 127.0,
                     null, "2026-08-23T18:00:00+09:00", "2026-08-23T20:00:00+09:00", null,
-                    false, null, List.of(), List.of("사유"), List.of("https://example.com"), "2026-08-20T00:00:00Z"
+                    false, null, List.of(), List.of("사유"), List.of(),
+                    List.of("https://example.com"), "2026-08-20T00:00:00Z"
             )), null, false);
         });
         MeetingResponse planning = meetingService.startPlanning(userId, draft.id());

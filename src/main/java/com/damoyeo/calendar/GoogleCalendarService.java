@@ -36,7 +36,7 @@ public class GoogleCalendarService {
         this.authorizedClientService = authorizedClientService;
         this.userRepository = userRepository;
         this.calendarEventRepository = calendarEventRepository;
-        this.restClient = restClientBuilder.baseUrl("https://www.googleapis.com/calendar/v3").build();
+        this.restClient = restClientBuilder.clone().baseUrl("https://www.googleapis.com/calendar/v3").build();
     }
 
     /** 선택된 일정 참여자 전원의 primary calendar에 각각 동일한 이벤트를 등록한다. */

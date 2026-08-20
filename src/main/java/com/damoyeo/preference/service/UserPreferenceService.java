@@ -14,6 +14,8 @@ import com.damoyeo.preference.domain.PreferenceStrength;
 import com.damoyeo.user.domain.User;
 import com.damoyeo.user.repository.UserRepository;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class UserPreferenceService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserPreferenceService.class);
 
     private final UserRepository userRepository;
     private final PreferenceVocabularyRepository vocabularyRepository;
@@ -86,6 +90,12 @@ public class UserPreferenceService {
         if (response.reply() == null || response.reply().isBlank() || response.extractedPreferences() == null) {
             throw invalidAiResponse();
         }
+        log.info("AI preference extraction: userId={}, extractedCount={}, mappings={}",
+                userId,
+                response.extractedPreferences().size(),
+                response.extractedPreferences().stream()
+                        .map(value -> value.mappingType() + ":" + value.vocabularyCode())
+                        .toList());
         for (AiClient.ExtractedPreference extracted : response.extractedPreferences()) {
             if (PreferenceMappingType.UNMAPPED.name().equals(extracted.mappingType())) {
                 continue;

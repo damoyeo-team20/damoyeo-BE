@@ -329,19 +329,7 @@ public class MeetingService {
                 .map(participant -> participant.getGroupMember().getUserId())
                 .toList();
         googleCalendarService.createForParticipants(meeting, suggestion, participantUserIds);
-        // 후보 확정은 사용자 의사결정이다. AI 장기기억 갱신 실패가 확정을 되돌리면 안 된다.
-        try {
-            updateGroupMemory(meeting, suggestion);
-        } catch (BusinessException exception) {
-            if (!isAiIntegrationFailure(exception)) {
-                throw exception;
-            }
-        }
         return toResponse(meeting);
-    }
-
-    private boolean isAiIntegrationFailure(BusinessException exception) {
-        return Set.of("AI_UNAVAILABLE", "AI_SERVICE_ERROR", "AI_RESPONSE_INVALID").contains(exception.getCode());
     }
 
     @Transactional
@@ -374,38 +362,36 @@ public class MeetingService {
                 .stream()
                 .map(participant -> {
                     long participantUserId = participant.getGroupMember().getUserId();
-                    List<String> dates = availableDateRepository
-                            .findAllByMeetingParticipantIdOrderByAvailableDateAsc(participant.getId()).stream()
-                            .map(date -> date.getAvailableDate().toString())
-                            .toList();
                     List<AiClient.CandidatePreference> preferences = preferenceRepository
                             .findAllByUserIdOrderByIdAsc(participantUserId).stream()
                             .map(preference -> new AiClient.CandidatePreference(
                                     preference.getVocabulary().getCode(), preference.getSentiment().name(),
                                     preference.getStrength().name(), preference.getRawValue()
                             )).toList();
-                    return new AiClient.CandidateParticipant(participantUserId, dates, preferences);
+                    return new AiClient.CandidateParticipant(participantUserId, preferences);
                 }).toList();
         Map<String, Object> memory = memoryRepository.findById(meeting.getId()).map(MeetingMemory::getMemory).orElse(Map.of());
-        Object groupMemory = groupMemoryRepository.findById(meeting.getGroup().getId()).map(GroupMemory::getSummary).map(summary -> Map.of("summary", summary)).orElse(null);
+        Object meetingMemory = groupMemoryRepository.findById(meeting.getGroup().getId())
+                .map(GroupMemory::getSummary)
+                .map(summary -> Map.of("summary", summary))
+                .orElse(null);
         List<String> excluded = memory.get("excludedExternalPlaceIds") instanceof List<?> values
                 ? values.stream().map(String::valueOf).toList() : List.of();
         return new AiClient.CandidateRequest(
                 "1.0", requestId,
-                new AiClient.CandidateMeeting(meeting.getId(), meeting.getPurpose(), meeting.getRegion(),
-                        meeting.getScheduleSearchFrom().toString(), meeting.getScheduleSearchTo().toString(),
-                        meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId(),
-                        commonAvailableDates(meeting).stream().map(LocalDate::toString).toList(),
+                new AiClient.CandidateMeeting(meeting.getId(), meeting.getPurpose(), meeting.getRegion()),
+                new AiClient.ConfirmedSlot(
                         meeting.getResolvedStartAt().toString(), meeting.getResolvedEndAt().toString()),
-                participants, Map.of(), groupMemory, excluded
+                participants, meetingMemory, excluded
         );
     }
 
     private void validateCandidateResponse(AiClient.CandidateResponse response, String requestId) {
         if (response == null || !requestId.equals(response.requestId()) || response.status() == null
                 || response.suggestions() == null || response.verificationTimedOut() == null
-                || !(response.status().equals("OK") || response.status().equals("NO_COMMON_SLOT")
-                || response.status().equals("NO_CANDIDATE") || response.status().equals("CONFLICT"))) {
+                || response.meetingTags() == null
+                || !(response.status().equals("OK") || response.status().equals("NO_CANDIDATE")
+                || response.status().equals("CONFLICT"))) {
             throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
         }
         if (response.status().equals("OK") && (response.suggestions().isEmpty() || response.suggestions().size() > 3)) {
@@ -423,21 +409,6 @@ public class MeetingService {
         memory.put("candidateResult", Map.of("generation", generation, "summary", response.summary()));
         memoryRepository.findById(meeting.getId())
                 .ifPresentOrElse(value -> value.update(memory), () -> memoryRepository.save(new MeetingMemory(meeting, memory)));
-    }
-
-    private void updateGroupMemory(Meeting meeting, MeetingSuggestion suggestion) {
-        String previous = groupMemoryRepository.findById(meeting.getGroup().getId()).map(GroupMemory::getSummary).orElse(null);
-        String context = meeting.getPurpose();
-        AiClient.GroupMemoryResponse response = aiClient.updateGroupMemory(meeting.getGroup().getId(),
-                new AiClient.GroupMemoryRequest(previous, new AiClient.ConfirmedMeeting(meeting.getId(), meeting.getRegion(),
-                        suggestion.getCategory(), suggestion.getName(), suggestion.getAddress(), suggestion.getProposedStartAt().toString(),
-                        suggestion.getProposedEndAt().toString(), context)));
-        if (response.updatedGroupSummary() == null || response.updatedGroupSummary().isBlank() || response.updatedGroupSummary().length() > 2000) {
-            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
-        }
-        groupMemoryRepository.findById(meeting.getGroup().getId()).ifPresentOrElse(
-                value -> value.update(response.updatedGroupSummary()),
-                () -> groupMemoryRepository.save(new GroupMemory(meeting.getGroup(), response.updatedGroupSummary())));
     }
 
     public record SuggestionResponse(Long id, int generation, String name, String category, String address,
