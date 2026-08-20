@@ -59,6 +59,12 @@ public class Meeting extends BaseEntity {
     @Column(name = "confirmed_end_at")
     private Instant confirmedEndAt;
 
+    @Column(name = "resolved_start_at")
+    private Instant resolvedStartAt;
+
+    @Column(name = "resolved_end_at")
+    private Instant resolvedEndAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "confirmed_suggestion_id")
     private MeetingSuggestion confirmedSuggestion;
@@ -127,6 +133,17 @@ public class Meeting extends BaseEntity {
             throw new BusinessException("MEETING_NOT_READY", "조율을 시작할 수 없는 상태입니다.", HttpStatus.CONFLICT);
         }
         status = MeetingStatus.PLANNING;
+    }
+
+    public void resolveSchedule(Instant startAt, Instant endAt) {
+        if (status != MeetingStatus.READY_TO_PLAN) {
+            throw new BusinessException("MEETING_NOT_READY", "가능 날짜 제출 완료 후 만남 일시를 정할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        this.resolvedStartAt = startAt;
+        this.resolvedEndAt = endAt;
     }
 
     public void reopenForRegeneration() {
@@ -239,6 +256,10 @@ public class Meeting extends BaseEntity {
     public Instant getConfirmedEndAt() {
         return confirmedEndAt;
     }
+
+    public Instant getResolvedStartAt() { return resolvedStartAt; }
+
+    public Instant getResolvedEndAt() { return resolvedEndAt; }
 
     public MeetingSuggestion getConfirmedSuggestion() { return confirmedSuggestion; }
 }

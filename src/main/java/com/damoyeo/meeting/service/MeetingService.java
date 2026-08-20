@@ -193,6 +193,9 @@ public class MeetingService {
     public MeetingResponse startPlanning(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         ensureCommonAvailableDate(meeting);
+        if (meeting.getResolvedStartAt() == null || meeting.getResolvedEndAt() == null) {
+            throw new BusinessException("SCHEDULE_NOT_RESOLVED", "만남 일시가 정해진 뒤 후보를 생성할 수 있습니다.", HttpStatus.CONFLICT);
+        }
         List<AiClient.ChatTurn> history = chatHistory(meetingId);
         if (history.stream().noneMatch(message -> "USER".equals(message.role()))) {
             throw new BusinessException("MEETING_CONTEXT_REQUIRED", "후보를 생성하기 전에 모임에 대해 대화해 주세요.", HttpStatus.BAD_REQUEST);
@@ -216,11 +219,18 @@ public class MeetingService {
         return toResponse(meeting);
     }
 
-    /** 채팅 진입 전 공통 가능 날짜만 검증한다. 후보 생성이나 AI 호출은 하지 않는다. */
+    /** 채팅 진입 전 공통 가능 날짜를 AI에 전달해 하나의 만남 일시를 정한다. */
     @Transactional
     public MeetingResponse prepareForChat(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
-        ensureCommonAvailableDate(meeting);
+        Set<LocalDate> commonDates = commonAvailableDates(meeting);
+        AiClient.ScheduleResolutionResponse response = aiClient.resolveSchedule(meetingId,
+                new AiClient.ScheduleResolutionRequest(
+                        commonDates.stream().map(LocalDate::toString).toList(),
+                        meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId()
+                ));
+        validateScheduleResolution(response, commonDates);
+        meeting.resolveSchedule(response.resolvedStartAt(), response.resolvedEndAt());
         return toResponse(meeting);
     }
 
@@ -257,6 +267,16 @@ public class MeetingService {
             );
         }
         return commonDates;
+    }
+
+    private void validateScheduleResolution(AiClient.ScheduleResolutionResponse response, Set<LocalDate> commonDates) {
+        if (response == null || response.resolvedStartAt() == null || response.resolvedEndAt() == null
+                || !response.resolvedEndAt().isAfter(response.resolvedStartAt())
+                || !java.time.Duration.between(response.resolvedStartAt(), response.resolvedEndAt())
+                .equals(java.time.Duration.ofMinutes(120))
+                || !commonDates.contains(response.resolvedStartAt().atZone(SERVICE_ZONE).toLocalDate())) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
     }
 
     @Transactional
@@ -310,6 +330,9 @@ public class MeetingService {
         if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.READY_TO_PLAN) {
             throw new BusinessException("MEETING_NOT_READY", "가능 날짜 제출 완료 후 조율 채팅을 시작할 수 있습니다.", HttpStatus.CONFLICT);
         }
+        if (meeting.getResolvedStartAt() == null || meeting.getResolvedEndAt() == null) {
+            throw new BusinessException("SCHEDULE_NOT_RESOLVED", "만남 일시가 정해진 뒤 채팅을 시작할 수 있습니다.", HttpStatus.CONFLICT);
+        }
         String userMessage = message.trim();
         AiClient.MeetingChatResponse response = aiClient.chat(meetingId, chatHistory(meetingId), userMessage);
         if (response.reply() == null || response.reply().isBlank()) {
@@ -352,7 +375,8 @@ public class MeetingService {
                 new AiClient.CandidateMeeting(meeting.getId(), meeting.getPurpose(), meeting.getRegion(),
                         meeting.getScheduleSearchFrom().toString(), meeting.getScheduleSearchTo().toString(),
                         meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId(),
-                        commonAvailableDates(meeting).stream().map(LocalDate::toString).toList()),
+                        commonAvailableDates(meeting).stream().map(LocalDate::toString).toList(),
+                        meeting.getResolvedStartAt().toString(), meeting.getResolvedEndAt().toString()),
                 participants, Map.of(), groupMemory, excluded
         );
     }

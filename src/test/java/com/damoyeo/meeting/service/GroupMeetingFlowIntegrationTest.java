@@ -88,6 +88,13 @@ class GroupMeetingFlowIntegrationTest {
                 draft.id(),
                 Set.of(LocalDate.of(2026, 8, 23))
         );
+        when(aiClient.resolveSchedule(anyLong(), any(AiClient.ScheduleResolutionRequest.class))).thenReturn(
+                new AiClient.ScheduleResolutionResponse(
+                        java.time.Instant.parse("2026-08-23T10:00:00Z"),
+                        java.time.Instant.parse("2026-08-23T12:00:00Z"),
+                        "참여자 모두가 가능한 날짜입니다."
+                )
+        );
         MeetingResponse prepared = meetingService.prepareForChat(userId, draft.id());
         when(aiClient.chat(anyLong(), any(), any())).thenReturn(new AiClient.MeetingChatResponse("무엇을 하고 싶은지 알려주세요."));
         meetingService.chat(userId, draft.id(), "조용하게 저녁을 먹고 싶어요");
