@@ -1,6 +1,7 @@
 package com.damoyeo.meeting.service;
 
 import com.damoyeo.ai.AiClient;
+import com.damoyeo.calendar.GoogleCalendarService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.damoyeo.common.exception.BusinessException;
 import com.damoyeo.group.domain.GroupMember;
@@ -24,6 +25,7 @@ import com.damoyeo.meeting.repository.MeetingAvailableDateRepository;
 import com.damoyeo.meeting.repository.MeetingChatMessageRepository;
 import com.damoyeo.meeting.repository.MeetingMemoryRepository;
 import com.damoyeo.meeting.repository.MeetingSuggestionRepository;
+import com.damoyeo.meeting.repository.MeetingCalendarEventRepository;
 import com.damoyeo.preference.repository.UserPreferenceRepository;
 import com.damoyeo.user.repository.UserRepository;
 import com.damoyeo.user.domain.User;
@@ -60,6 +62,8 @@ public class MeetingService {
     private final ObjectMapper objectMapper;
     private final MeetingSuggestionRepository suggestionRepository;
     private final GroupMemoryRepository groupMemoryRepository;
+    private final GoogleCalendarService googleCalendarService;
+    private final MeetingCalendarEventRepository calendarEventRepository;
 
     public MeetingService(
             MeetingRepository meetingRepository,
@@ -74,7 +78,9 @@ public class MeetingService {
             MeetingMemoryRepository memoryRepository,
             ObjectMapper objectMapper,
             MeetingSuggestionRepository suggestionRepository,
-            GroupMemoryRepository groupMemoryRepository
+            GroupMemoryRepository groupMemoryRepository,
+            GoogleCalendarService googleCalendarService,
+            MeetingCalendarEventRepository calendarEventRepository
     ) {
         this.meetingRepository = meetingRepository;
         this.participantRepository = participantRepository;
@@ -89,6 +95,8 @@ public class MeetingService {
         this.objectMapper = objectMapper;
         this.suggestionRepository = suggestionRepository;
         this.groupMemoryRepository = groupMemoryRepository;
+        this.googleCalendarService = googleCalendarService;
+        this.calendarEventRepository = calendarEventRepository;
     }
 
     @Transactional
@@ -151,6 +159,13 @@ public class MeetingService {
                         value.getAddress(), value.getProposedStartAt(), value.getProposedEndAt(), value.getExternalPlaceId(),
                         value.getExternalUrl(), value.getBusinessHours(), value.isBusinessHoursVerified(),
                         value.getOpenAtMeetingTime(), value.getReasons()))
+                .toList();
+    }
+
+    public List<CalendarEventResponse> findCalendarEvents(long userId, long meetingId) {
+        requireAccessibleMeeting(userId, meetingId);
+        return calendarEventRepository.findAllByMeetingIdOrderByIdAsc(meetingId).stream()
+                .map(event -> new CalendarEventResponse(event.getUserId(), event.getStatus(), event.getGoogleEventId()))
                 .toList();
     }
 
@@ -309,6 +324,8 @@ public class MeetingService {
         MeetingSuggestion suggestion = suggestionRepository.findByIdAndMeetingId(suggestionId, meetingId)
                 .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "후보를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
         meeting.confirm(suggestion);
+        // Calendar 등록 실패는 사용자의 모임 확정을 되돌리지 않는다.
+        googleCalendarService.createForCreator(meeting, suggestion, userId);
         // 후보 확정은 사용자 의사결정이다. AI 장기기억 갱신 실패가 확정을 되돌리면 안 된다.
         try {
             updateGroupMemory(meeting, suggestion);
@@ -424,6 +441,8 @@ public class MeetingService {
                                      java.time.Instant proposedStartAt, java.time.Instant proposedEndAt, String externalPlaceId,
                                      String externalUrl, String businessHours, boolean businessHoursVerified,
                                      Boolean openAtMeetingTime, List<String> reasons) {}
+    public record CalendarEventResponse(Long userId, com.damoyeo.meeting.domain.CalendarEventStatus status,
+                                        String googleEventId) {}
     public record ChatMessageResponse(Long id, ChatRole role, String content, java.time.Instant createdAt) {}
 
     private Meeting requireAccessibleMeeting(long userId, long meetingId) {
