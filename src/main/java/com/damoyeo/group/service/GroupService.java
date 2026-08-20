@@ -29,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GroupService {
 
     private static final int MAX_INVITE_CODE_ATTEMPTS = 10;
+    private static final String CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+    private static final String CALENDAR_FREE_BUSY_SCOPE = "https://www.googleapis.com/auth/calendar.freebusy";
 
     private final MeetingGroupRepository groupRepository;
     private final GroupMemberRepository memberRepository;
@@ -94,6 +96,15 @@ public class GroupService {
         return toDetailResponse(group, members);
     }
 
+    @Transactional
+    public void delete(long userId, long groupId) {
+        GroupMember member = requireJoinedMember(userId, groupId);
+        if (member.getRole() != com.damoyeo.group.domain.GroupMemberRole.HOST) {
+            throw new BusinessException("GROUP_DELETE_FORBIDDEN", "그룹 대표만 모임을 삭제할 수 있습니다.", HttpStatus.FORBIDDEN);
+        }
+        groupRepository.delete(member.getGroup());
+    }
+
     public GroupMember requireJoinedMember(long userId, long groupId) {
         GroupMember member = memberRepository.findByGroupIdAndUserId(groupId, userId)
                 .orElseThrow(() -> new BusinessException("GROUP_NOT_FOUND", "그룹을 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
@@ -120,8 +131,9 @@ public class GroupService {
                 User::getId,
                 user -> {
                     var client = authorizedClientService.loadAuthorizedClient("google", user.getGoogleSubject());
-                    return client != null && client.getAccessToken().getScopes()
-                            .contains("https://www.googleapis.com/auth/calendar.events");
+                    return client != null
+                            && client.getAccessToken().getScopes().contains(CALENDAR_EVENTS_SCOPE)
+                            && client.getAccessToken().getScopes().contains(CALENDAR_FREE_BUSY_SCOPE);
                 }
         ));
         List<Meeting> meetings = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(group.getId());
@@ -129,15 +141,15 @@ public class GroupService {
                 .filter(meeting -> meeting.getStatus() == MeetingStatus.CONFIRMED)
                 .filter(meeting -> meeting.getConfirmedStartAt() != null && meeting.getConfirmedStartAt().isBefore(java.time.Instant.now()))
                 .count();
-        GroupDetailResponse.ActiveMeetingResponse activeMeeting = meetings.stream()
-                .filter(meeting -> meeting.getStatus() == MeetingStatus.SURVEYING
-                        || meeting.getStatus() == MeetingStatus.READY_TO_PLAN
-                        || meeting.getStatus() == MeetingStatus.PLANNING
-                        || meeting.getStatus() == MeetingStatus.PROPOSING)
-                .findFirst()
-                .map(meeting -> new GroupDetailResponse.ActiveMeetingResponse(meeting.getId(), meeting.getStatus().name()))
-                .orElse(null);
-        return GroupDetailResponse.of(group, members, users, preferenceCounts, calendarConnections, pastMeetingCount, activeMeeting);
+        List<GroupDetailResponse.ActiveMeetingResponse> activeMeetings = meetings.stream()
+                .filter(this::isActive)
+                .map(meeting -> new GroupDetailResponse.ActiveMeetingResponse(
+                        meeting.getId(), meeting.getStatus().name(), meeting.getPurpose(), meeting.getRegion(),
+                        meeting.getScheduleSearchFrom(), meeting.getScheduleSearchTo(), meeting.getCreatedBy(), meeting.getCreatedAt()
+                ))
+                .toList();
+        GroupDetailResponse.ActiveMeetingResponse activeMeeting = activeMeetings.stream().findFirst().orElse(null);
+        return GroupDetailResponse.of(group, members, users, preferenceCounts, calendarConnections, pastMeetingCount, activeMeetings, activeMeeting);
     }
 
     private GroupSummaryResponse toSummaryResponse(MeetingGroup group) {
@@ -151,12 +163,28 @@ public class GroupService {
                         member.getRole()
                 ))
                 .toList();
-        GroupSummaryResponse.LastMeetingResponse lastMeeting = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(group.getId()).stream()
+        List<Meeting> meetings = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(group.getId());
+        GroupSummaryResponse.LastMeetingResponse lastMeeting = meetings.stream()
                 .filter(meeting -> meeting.getStatus() == MeetingStatus.CONFIRMED && meeting.getConfirmedStartAt() != null)
                 .filter(meeting -> meeting.getConfirmedStartAt().isBefore(java.time.Instant.now()))
                 .max(java.util.Comparator.comparing(Meeting::getConfirmedStartAt))
                 .map(meeting -> new GroupSummaryResponse.LastMeetingResponse(meeting.getConfirmedStartAt(), meeting.getRegion()))
                 .orElse(null);
-        return new GroupSummaryResponse(group.getId(), group.getName(), members.size(), responses, lastMeeting, group.getCreatedAt());
+        List<GroupSummaryResponse.ActiveMeetingResponse> activeMeetings = meetings.stream()
+                .filter(this::isActive)
+                .map(meeting -> new GroupSummaryResponse.ActiveMeetingResponse(
+                        meeting.getId(), meeting.getStatus().name(), meeting.getPurpose(), meeting.getRegion(),
+                        meeting.getScheduleSearchFrom(), meeting.getScheduleSearchTo(), meeting.getCreatedBy(), meeting.getCreatedAt()
+                ))
+                .toList();
+        GroupSummaryResponse.ActiveMeetingResponse activeMeeting = activeMeetings.stream().findFirst().orElse(null);
+        return new GroupSummaryResponse(group.getId(), group.getName(), members.size(), responses, lastMeeting, activeMeetings, activeMeeting, group.getCreatedAt());
+    }
+
+    private boolean isActive(Meeting meeting) {
+        return meeting.getStatus() == MeetingStatus.SURVEYING
+                || meeting.getStatus() == MeetingStatus.READY_TO_PLAN
+                || meeting.getStatus() == MeetingStatus.PLANNING
+                || meeting.getStatus() == MeetingStatus.PROPOSING;
     }
 }

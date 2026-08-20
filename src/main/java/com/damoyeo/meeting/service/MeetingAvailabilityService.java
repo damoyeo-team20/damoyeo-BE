@@ -1,5 +1,6 @@
 package com.damoyeo.meeting.service;
 
+import com.damoyeo.calendar.GoogleCalendarService;
 import com.damoyeo.common.exception.BusinessException;
 import com.damoyeo.group.domain.GroupMember;
 import com.damoyeo.group.service.GroupService;
@@ -8,6 +9,7 @@ import com.damoyeo.meeting.domain.MeetingAvailableDate;
 import com.damoyeo.meeting.domain.MeetingParticipant;
 import com.damoyeo.meeting.dto.AvailabilityResponse;
 import com.damoyeo.meeting.dto.CoordinationStatusResponse;
+import com.damoyeo.meeting.dto.CalendarBusyDatesResponse;
 import com.damoyeo.meeting.repository.MeetingAvailableDateRepository;
 import com.damoyeo.meeting.repository.MeetingParticipantRepository;
 import com.damoyeo.meeting.repository.MeetingRepository;
@@ -29,17 +31,20 @@ public class MeetingAvailabilityService {
     private final MeetingParticipantRepository participantRepository;
     private final MeetingAvailableDateRepository availableDateRepository;
     private final GroupService groupService;
+    private final GoogleCalendarService googleCalendarService;
 
     public MeetingAvailabilityService(
             MeetingRepository meetingRepository,
             MeetingParticipantRepository participantRepository,
             MeetingAvailableDateRepository availableDateRepository,
-            GroupService groupService
+            GroupService groupService,
+            GoogleCalendarService googleCalendarService
     ) {
         this.meetingRepository = meetingRepository;
         this.participantRepository = participantRepository;
         this.availableDateRepository = availableDateRepository;
         this.groupService = groupService;
+        this.googleCalendarService = googleCalendarService;
     }
 
     @Transactional
@@ -67,7 +72,8 @@ public class MeetingAvailabilityService {
         participantRepository.flush();
 
         List<MeetingParticipant> participants = participantRepository.findAllByMeetingIdOrderByIdAsc(meetingId);
-        if (participants.stream().allMatch(value -> value.getAvailabilitySubmittedAt() != null)) {
+        if (meeting.getStatus() == com.damoyeo.meeting.domain.MeetingStatus.SURVEYING
+                && participants.stream().allMatch(value -> value.getAvailabilitySubmittedAt() != null)) {
             meeting.completeAvailabilityCollection();
         }
 
@@ -99,6 +105,24 @@ public class MeetingAvailabilityService {
                 dates,
                 meeting.getStatus()
         );
+    }
+
+    public CalendarBusyDatesResponse findMyCalendarBusyDates(long userId, long meetingId) {
+        Meeting meeting = requireMeeting(meetingId);
+        if (meeting.getScheduleSearchFrom() == null || meeting.getScheduleSearchTo() == null) {
+            throw new BusinessException("SEARCH_PERIOD_REQUIRED", "일정 탐색 범위가 필요합니다.", HttpStatus.CONFLICT);
+        }
+        GroupMember member = groupService.requireJoinedMember(userId, meeting.getGroup().getId());
+        participantRepository.findByMeetingIdAndGroupMemberId(meetingId, member.getId())
+                .orElseThrow(() -> new BusinessException(
+                        "NOT_MEETING_PARTICIPANT",
+                        "이번 일정의 참여자가 아닙니다.",
+                        HttpStatus.FORBIDDEN
+                ));
+        var result = googleCalendarService.findBusyDates(
+                userId, meeting.getScheduleSearchFrom(), meeting.getScheduleSearchTo()
+        );
+        return new CalendarBusyDatesResponse(result.calendarConnected(), result.busyDates());
     }
 
     public CoordinationStatusResponse findCoordinationStatus(long userId, long meetingId) {

@@ -4,6 +4,7 @@ import com.damoyeo.group.domain.GroupMember;
 import com.damoyeo.group.domain.GroupMemberRole;
 import com.damoyeo.group.domain.MeetingGroup;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import com.damoyeo.user.domain.User;
@@ -15,6 +16,7 @@ public record GroupDetailResponse(
         int memberCount,
         long pastMeetingCount,
         List<MemberResponse> members,
+        List<ActiveMeetingResponse> activeMeetings,
         ActiveMeetingResponse activeMeeting,
         Instant createdAt
 ) {
@@ -25,6 +27,7 @@ public record GroupDetailResponse(
             Map<Long, Long> preferenceCounts,
             Map<Long, Boolean> calendarConnections,
             long pastMeetingCount,
+            List<ActiveMeetingResponse> activeMeetings,
             ActiveMeetingResponse activeMeeting
     ) {
         return new GroupDetailResponse(
@@ -41,6 +44,7 @@ public record GroupDetailResponse(
                                 calendarConnections.getOrDefault(member.getUserId(), false)
                         ))
                         .toList(),
+                activeMeetings,
                 activeMeeting,
                 group.getCreatedAt()
         );
@@ -66,6 +70,15 @@ public record GroupDetailResponse(
         }
     }
 
-    public record ActiveMeetingResponse(Long id, String status) {
+    public record ActiveMeetingResponse(
+            Long id,
+            String status,
+            String purpose,
+            String region,
+            LocalDate scheduleSearchFrom,
+            LocalDate scheduleSearchTo,
+            Long createdBy,
+            Instant createdAt
+    ) {
     }
 }

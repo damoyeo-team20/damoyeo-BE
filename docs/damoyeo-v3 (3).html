@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>다모여 v2 — 모임 조율 에이전트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#EFEDF6; --paper:#FFFFFF; --ink:#16162B; --ink-60:#5B5A78; --ink-30:#A6A4BE;
+  --violet:#4A34E8; --violet-soft:#E6E2FF; --lemon:#FFD34E; --moss:#1F7A63; --coral:#E2455B;
+  --line:#DEDBEC; --shadow:0 12px 32px -12px rgba(22,22,43,.28);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:radial-gradient(1100px 600px at 12% -8%, #DFD9FB 0%, transparent 60%),
+             radial-gradient(900px 700px at 100% 10%, #FFF0C9 0%, transparent 55%), var(--canvas);
+  font-family:"Noto Sans KR",system-ui,sans-serif;color:var(--ink);min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:28px 16px;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit}
+::-webkit-scrollbar{width:0;height:0}
+
+.shell{width:100%;max-width:412px;height:min(880px,calc(100vh - 56px));background:var(--paper);
+  border-radius:34px;overflow:hidden;position:relative;
+  box-shadow:0 40px 80px -30px rgba(22,22,43,.45),0 0 0 1px var(--line);display:flex;flex-direction:column}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;overflow-y:auto;overscroll-behavior:contain}
+.screen.on{display:flex;animation:rise .38s cubic-bezier(.2,.8,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.pad{padding:0 22px}
+.spacer{flex:1;min-height:18px}
+.wordmark{font-family:"Black Han Sans",sans-serif;letter-spacing:-.02em;line-height:.95}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-30)}
+.mono{font-family:"IBM Plex Mono",monospace}
+h2.title{font-size:22px;font-weight:900;margin:0 0 6px;letter-spacing:-.02em}
+p.sub{font-size:13.5px;line-height:1.65;color:var(--ink-60);margin:0}
+
+/* login */
+#s-login{background:var(--ink);color:#fff;justify-content:space-between;padding:40px 26px 30px}
+#s-login .wordmark{font-size:72px;color:#fff}
+#s-login .dot{color:var(--lemon)}
+.tagline{font-size:15px;line-height:1.7;color:#B9B6D8;margin-top:14px;max-width:20em}
+.orbit{position:relative;height:200px;margin:4px 0}
+.orbit svg{position:absolute;inset:0;width:100%;height:100%}
+.gbtn{width:100%;background:#fff;color:#1f1f1f;border-radius:14px;height:54px;display:flex;
+  align-items:center;justify-content:center;gap:10px;font-weight:700;font-size:15px}
+.legal{font-size:11px;color:#6E6B90;text-align:center;margin-top:14px;line-height:1.6}
+
+/* topbar */
+.topbar{display:flex;align-items:center;gap:12px;padding:18px 22px 12px;position:sticky;top:0;background:var(--paper);z-index:5}
+.topbar .back{width:34px;height:34px;border-radius:11px;background:var(--canvas);display:grid;place-items:center;font-size:16px}
+.topbar h3{font-size:16px;font-weight:800;margin:0;letter-spacing:-.01em}
+.skip{margin-left:auto;font-size:13px;font-weight:600;color:var(--ink-60);padding:8px 4px}
+
+/* chat */
+.chat{flex:1;padding:6px 22px 12px;display:flex;flex-direction:column;gap:12px}
+.bubble{max-width:86%;padding:13px 15px;font-size:14px;line-height:1.65;border-radius:16px;animation:pop .3s ease}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.bot{background:var(--canvas);border-bottom-left-radius:5px;align-self:flex-start}
+.me{background:var(--violet);color:#fff;border-bottom-right-radius:5px;align-self:flex-end}
+.examples{display:flex;flex-direction:column;gap:7px;align-self:flex-start;max-width:92%}
+.ex-label{font-size:11px;color:var(--ink-30);font-family:"IBM Plex Mono",monospace;letter-spacing:.1em}
+.chip{text-align:left;border:1px dashed var(--line);background:#fff;border-radius:13px;padding:10px 13px;
+  font-size:13px;color:var(--ink-60);line-height:1.5}
+.chip:active{background:var(--violet-soft);border-color:var(--violet);color:var(--ink)}
+.composer{position:sticky;bottom:0;background:var(--paper);padding:10px 18px 18px;border-top:1px solid var(--line);
+  display:flex;gap:8px;align-items:flex-end}
+.composer textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:15px;padding:13px 14px;font-size:14px;
+  font-family:inherit;line-height:1.5;max-height:96px;background:var(--canvas);color:var(--ink);outline:none}
+.composer textarea:focus{border-color:var(--violet);background:#fff}
+.send{width:46px;height:46px;border-radius:14px;background:var(--ink);color:#fff;display:grid;place-items:center;flex:none}
+.send:disabled{opacity:.3}
+
+/* preference record — signature element */
+.prefbox{border:1px solid var(--line);border-radius:16px;background:#fff;overflow:hidden;align-self:stretch}
+.prefbox .ph{display:flex;align-items:center;gap:7px;padding:11px 13px;border-bottom:1px solid var(--line);background:var(--canvas)}
+.prefbox .ph b{font-size:11.5px;font-weight:800}
+.prefbox .ph .cnt{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-30)}
+.prec{padding:11px 13px;border-bottom:1px solid var(--line)}
+.prec:last-child{border-bottom:none}
+.prec .l1{display:flex;align-items:center;gap:7px}
+.prec .tgt{font-size:13.5px;font-weight:800}
+.prec .sent{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;padding:3px 6px;border-radius:6px}
+.sent.pos{background:#E4F3EF;color:var(--moss)}
+.sent.neg{background:#FFE7EA;color:var(--coral)}
+.prec .ctx{margin-left:auto;font-size:10.5px;color:var(--ink-30);font-family:"IBM Plex Mono",monospace}
+.meter{height:5px;border-radius:3px;background:var(--canvas);margin-top:8px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:3px;background:var(--violet)}
+.meter i.negb{background:var(--coral)}
+.prec .orig{font-size:11px;color:var(--ink-30);margin-top:7px;line-height:1.5}
+.strength-label{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-30);margin-top:5px;display:flex;justify-content:space-between}
+
+.done-btn{width:100%;height:52px;border-radius:15px;background:var(--ink);color:#fff;font-weight:700;font-size:15px}
+.done-btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink-60)}
+.done-btn:disabled{opacity:.35}
+
+/* home */
+.fab{position:absolute;right:18px;top:22px;width:44px;height:44px;border-radius:50%;background:#fff;
+  border:1px solid var(--line);box-shadow:var(--shadow);display:grid;place-items:center;z-index:20}
+.fab span{width:30px;height:30px;border-radius:50%;background:var(--violet);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800}
+.fab i{position:absolute;right:-1px;top:-1px;width:13px;height:13px;border-radius:50%;background:var(--lemon);border:2px solid #fff}
+.home-head{padding:26px 22px 18px}
+.home-head .hi{font-size:13px;color:var(--ink-60)}
+.home-head .wordmark{font-size:36px;margin-top:4px}
+.sec-label{display:flex;align-items:baseline;gap:8px;padding:0 22px 12px}
+.sec-label .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-30)}
+.list{padding:0 22px 26px;display:flex;flex-direction:column;gap:11px}
+.gcard{border:1px solid var(--line);border-radius:18px;padding:16px;background:#fff;text-align:left;width:100%;display:block}
+.gcard:active{border-color:var(--violet)}
+.gcard .row{display:flex;align-items:center;gap:8px}
+.gcard .nm{font-size:15.5px;font-weight:800;letter-spacing:-.01em}
+.gcard .cntb{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:700;
+  padding:4px 8px;border-radius:7px;background:var(--canvas);color:var(--ink-60)}
+.gcard .meta{font-size:12.5px;color:var(--ink-60);margin-top:7px}
+.faces{display:flex;margin-top:12px;align-items:center}
+.face{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;font-size:11.5px;font-weight:700;
+  color:#fff;border:2px solid #fff;margin-left:-8px;flex:none}
+.face:first-child{margin-left:0}
+.face.more{background:var(--canvas);color:var(--ink-60)}
+.face-names{font-size:11.5px;color:var(--ink-30);margin-left:9px}
+.quick-actions{margin:18px 22px 20px;display:flex;border:1px solid var(--line);border-radius:18px;
+  overflow:hidden;background:#fff}
+.qa-btn{flex:1;padding:15px 8px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px}
+.qa-btn:first-child{border-right:1px solid var(--line)}
+.qa-ic{font-size:17px;font-weight:800;color:var(--violet)}
+.qa-t{font-size:12.5px;font-weight:700}
+
+/* group detail */
+.grp-hero{background:var(--ink);color:#fff;padding:22px;border-radius:0 0 26px 26px;margin-bottom:20px}
+.grp-hero .wordmark{font-size:28px;color:#fff;margin-top:8px}
+.grp-hero .gm{font-size:12px;color:#B9B6D8;margin-top:10px;line-height:1.6}
+
+.confirmed-card{margin:0 22px 20px;border:1px solid var(--violet);border-radius:18px;background:var(--violet-soft);padding:16px}
+.confirmed-card .cc-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--violet);
+  letter-spacing:.08em;font-weight:700}
+.confirmed-card .cc-title{font-size:17px;font-weight:900;margin-top:7px;letter-spacing:-.01em}
+.confirmed-card .cc-when{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink);margin-top:6px}
+.confirmed-card .cc-who{font-size:12px;color:var(--ink-60);margin-top:9px;line-height:1.6}
+
+.coord-banner{margin:0 22px 20px;border:1px solid var(--line);border-radius:18px;background:var(--canvas);padding:16px}
+.coord-banner .cb-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--violet);
+  letter-spacing:.08em;font-weight:700}
+.coord-banner .cb-desc{font-size:12.5px;color:var(--ink-60);margin-top:6px;line-height:1.6}
+.coord-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.coord-row{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;
+  padding:9px 12px;background:#fff;border-radius:11px}
+.coord-badge{font-size:11px;font-weight:700;color:var(--ink-30)}
+.coord-badge.ok{color:var(--violet)}
+.cb-btn{margin-top:12px;width:100%;height:44px;border-radius:12px;background:var(--ink);
+  color:#fff;font-weight:700;font-size:13px}
+.cb-demo{margin-top:8px;width:100%;text-align:center;font-size:11px;color:var(--ink-30);
+  text-decoration:underline;background:none}
+.coord-pick{padding:6px 12px;border-radius:9px;background:var(--ink);color:#fff;font-size:11.5px;font-weight:700}
+.cb-summary-link{margin-top:12px;width:100%;padding:10px;border:1px dashed var(--line);border-radius:12px;
+  font-size:12px;font-weight:700;background:#fff;color:var(--ink)}
+
+.screen.readonly input, .screen.readonly textarea{pointer-events:none;opacity:.65}
+.screen.readonly .people-pick .person, .screen.readonly .timegrid .tslot{pointer-events:none;opacity:.85}
+
+.mrow{display:flex;align-items:center;gap:11px;padding:12px 13px;border:1px solid var(--line);border-radius:15px}
+.mrow .face{margin:0;border:none}
+.mrow .mn{font-size:14px;font-weight:700}
+.mrow .mm{font-size:11.5px;color:var(--ink-60);margin-top:2px}
+.mrow .st{margin-left:auto;font-size:10.5px;font-family:"IBM Plex Mono",monospace;font-weight:700;padding:4px 8px;border-radius:7px}
+.st.ok{background:#E4F3EF;color:var(--moss)}
+.st.pend{background:var(--canvas);color:var(--ink-30)}
+.tl{padding:0 22px 24px;display:flex;flex-direction:column}
+.tlrow{display:flex;gap:12px}
+.tlrow .rail{width:22px;display:flex;flex-direction:column;align-items:center;flex:none}
+.tlrow .dot{width:9px;height:9px;border-radius:50%;background:var(--violet);margin-top:16px}
+.tlrow .dot.past{background:var(--line)}
+.tlrow .line{flex:1;width:1px;background:var(--line)}
+.tlrow .body{flex:1;padding:12px 0 4px}
+.tlrow .tt{font-size:14px;font-weight:700}
+.tlrow .td{font-size:11.5px;color:var(--ink-60);margin-top:3px;font-family:"IBM Plex Mono",monospace}
+
+/* form */
+.lbl{font-size:12px;font-weight:800;margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.req{font-size:10px;font-family:"IBM Plex Mono",monospace;color:var(--coral);font-weight:700}
+.opt{font-size:10px;font-family:"IBM Plex Mono",monospace;color:var(--ink-30);font-weight:700}
+.hintsm{font-size:11.5px;color:var(--ink-30);margin-top:7px;line-height:1.55}
+.block{padding:0 22px 22px}
+.nl-box{border:1px solid var(--line);border-radius:18px;background:var(--canvas);padding:14px}
+.nl-box.bad{border-color:var(--coral);background:#FFF5F6}
+
+/* 달력 선택 UI */
+.cal-wrap{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fff}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-nav button{width:30px;height:30px;border-radius:10px;background:var(--canvas);font-size:15px;font-weight:700;flex:none}
+.cal-title{font-weight:800;font-size:13.5px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{font-size:10.5px;color:var(--ink-30);text-align:center;font-weight:700;padding-bottom:4px}
+.cal-day{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font-size:12.5px;border-radius:10px;cursor:pointer;background:none;border:none;font-family:inherit;color:var(--ink)}
+.cal-day.other{visibility:hidden}
+.cal-day.oob{color:var(--ink-30);opacity:.35;cursor:default}
+.cal-day.avail{cursor:pointer}
+.cal-day.sel{background:var(--violet-soft);color:var(--violet);font-weight:800}
+.cl-dot{width:5px;height:5px;border-radius:50%;display:inline-block}
+.cl-dot.free{background:#3FAE7A}
+.cl-dot.busy{background:#E2455B}
+.cal-legend{display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:11px;color:var(--ink-60)}
+.cal-legend .cl-dot{margin-right:5px;vertical-align:middle}
+.cal-allmonth{margin-top:12px;width:100%;padding:10px;border:1px dashed var(--line);border-radius:12px;
+  font-size:12.5px;font-weight:700;background:#fff}
+.cal-allmonth.sel{border-color:var(--violet);border-style:solid;background:var(--violet-soft);color:var(--violet)}
+.nl-box textarea{width:100%;border:none;background:none;resize:none;font-family:inherit;font-size:14.5px;
+  line-height:1.6;outline:none;min-height:66px;color:var(--ink)}
+.nl-box textarea::placeholder{color:var(--ink-30)}
+.hintline{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.hintline .chip{font-size:12px;padding:7px 11px;border-style:solid}
+.chip.sel{border-color:var(--violet);border-style:solid;background:var(--violet-soft);color:var(--violet)}
+.inp{width:100%;height:50px;border:1px solid var(--line);border-radius:14px;background:var(--canvas);
+  padding:0 14px;font-size:14.5px;color:var(--ink);outline:none}
+.inp:focus{border-color:var(--violet);background:#fff}
+.inp.bad{border-color:var(--coral);background:#FFF5F6}
+.regions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.rchip{border:1px solid var(--line);border-radius:11px;padding:7px 11px;font-size:12.5px;font-weight:600;color:var(--ink-60);background:#fff}
+.rchip.sel{border-color:var(--violet);background:var(--violet-soft);color:var(--violet)}
+.timegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:4px}
+.tslot{border:1px solid var(--line);border-radius:12px;padding:10px 4px;text-align:center;background:#fff}
+.tslot .t1{font-size:12.5px;font-weight:800}
+.tslot .t2{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink-30);margin-top:3px}
+.tslot.sel{border-color:var(--violet);background:var(--violet-soft)}
+.tslot.sel .t2{color:var(--violet)}
+.people-pick{display:flex;flex-wrap:wrap;gap:8px}
+.person{border:1px solid var(--line);border-radius:13px;padding:9px 12px 9px 9px;display:flex;align-items:center;
+  gap:8px;font-size:13px;font-weight:600;background:#fff}
+.person .face{margin:0;border:none;width:24px;height:24px;font-size:10.5px}
+.person.sel{border-color:var(--violet);background:var(--violet-soft)}
+.person .chk{font-size:11px;color:var(--violet);font-weight:900;display:none}
+.person.sel .chk{display:inline}
+.switchrow{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:16px;padding:14px}
+.switchrow .sw{width:44px;height:26px;border-radius:14px;background:var(--line);position:relative;flex:none;transition:.2s}
+.switchrow .sw::after{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
+.switchrow.on .sw{background:var(--violet)}
+.switchrow.on .sw::after{left:21px}
+.switchrow .swt{font-size:13px;font-weight:700}
+.switchrow .swd{font-size:11.5px;color:var(--ink-60);margin-top:3px;line-height:1.5}
+.datewrap{display:flex;gap:8px;margin-top:10px}
+.datewrap .inp{height:44px;font-size:13px}
+
+/* solving */
+#s-solve{align-items:center;justify-content:center;padding:0 30px;text-align:center}
+.radar{width:180px;height:180px;margin-bottom:22px}
+.radar svg{width:100%;height:100%}
+.steps{width:100%;display:flex;flex-direction:column;gap:10px;margin-top:6px;text-align:left}
+.step{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--ink-30);transition:color .3s}
+.step .bullet{width:19px;height:19px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;
+  place-items:center;font-size:10px;color:#fff;transition:.3s;margin-top:1px}
+.step.on{color:var(--ink);font-weight:600}
+.step.on .bullet{background:var(--violet);border-color:var(--violet)}
+.step .sn{display:block;font-size:10.5px;color:var(--ink-30);font-weight:400;margin-top:2px;font-family:"IBM Plex Mono",monospace}
+
+/* conflict screen */
+.warnbox{margin:0 22px 18px;border-radius:16px;background:#FFF5F6;border:1px solid #FFD9DE;padding:15px;
+  font-size:13px;line-height:1.65;color:#8A2233}
+.altcard{border:1px solid var(--line);border-radius:16px;padding:15px;background:#fff;text-align:left;width:100%;display:block}
+.altcard.sel{border-color:var(--violet);background:var(--violet-soft)}
+.altcard .aw{font-family:"IBM Plex Mono",monospace;font-size:15px;font-weight:600}
+.altcard .ac{font-size:12.5px;color:var(--ink-60);margin-top:6px}
+.attend{display:flex;gap:5px;margin-top:11px;align-items:center}
+.att{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff}
+.att.out{background:var(--canvas);color:var(--ink-30);text-decoration:line-through}
+.ratio{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600}
+
+/* proposals */
+.summary-strip{margin:12px 22px 4px;border-radius:16px;background:var(--canvas);padding:13px 15px;font-size:12.5px;
+  line-height:1.7;color:var(--ink-60)}
+.summary-strip b{color:var(--ink)}
+.domchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.dchip{font-size:11px;font-weight:700;padding:5px 9px;border-radius:8px;background:#fff;border:1px solid var(--line)}
+.cards{padding:14px 22px 30px;display:flex;flex-direction:column;gap:14px}
+.prop{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:#fff}
+.prop-top{padding:15px 16px 0;display:flex;align-items:flex-start;gap:10px}
+.rank{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--ink-30);padding-top:4px}
+.prop-cat{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;color:var(--violet);
+  background:var(--violet-soft);padding:3px 7px;border-radius:6px;display:inline-block}
+.prop-name{font-size:19px;font-weight:900;letter-spacing:-.02em;margin-top:7px}
+.prop-addr{font-size:11.5px;color:var(--ink-60);margin-top:4px}
+.prop-body{padding:12px 16px 16px}
+.verify{border:1px solid #CFE9E1;background:#F2FAF8;border-radius:14px;padding:11px 12px;margin-bottom:11px}
+.verify .vh{display:flex;align-items:center;gap:6px;font-size:11px;font-family:"IBM Plex Mono",monospace;
+  color:var(--moss);font-weight:600;letter-spacing:.06em}
+.verify .vl{font-size:12.5px;color:var(--ink);margin-top:7px;line-height:1.6}
+.verify .vsrc{font-size:10.5px;color:var(--ink-30);margin-top:6px}
+.reasons{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:11.5px;font-weight:600;padding:5px 9px;border-radius:8px;background:var(--canvas);color:var(--ink-60)}
+.tag.fit{background:var(--violet-soft);color:var(--violet)}
+.tag.time{background:#FFF6DA;color:#8A6A00}
+.plink{font-size:11.5px;font-weight:700;color:var(--violet);margin-top:10px;padding:0;display:block}
+.prop-actions{display:flex;gap:8px;padding:0 16px 16px}
+.btn{flex:1;height:46px;border-radius:14px;font-weight:700;font-size:14px;display:grid;place-items:center}
+.btn.ghost{border:1px solid var(--line);color:var(--ink-60)}
+.btn.solid{background:var(--ink);color:#fff}
+.excluded{margin:0 22px 26px;border:1px dashed var(--line);border-radius:16px;padding:14px}
+.excluded .eh{font-size:12px;font-weight:800;margin-bottom:9px}
+.exrow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-60);padding:6px 0}
+.exrow .xm{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--coral);background:#FFE7EA;
+  padding:3px 6px;border-radius:6px;flex:none}
+
+/* done */
+.done-hero{background:var(--ink);color:#fff;padding:32px 24px 28px;border-radius:0 0 30px 30px}
+.done-hero .eyebrow{color:#6E6B90}
+.done-hero .wordmark{font-size:28px;color:#fff;margin-top:10px;line-height:1.3}
+.done-hero .when{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--lemon);margin-top:14px}
+.recap{padding:20px 22px;display:flex;flex-direction:column;gap:10px}
+.recap-row{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:16px}
+.recap-row .ic{width:34px;height:34px;border-radius:11px;background:var(--canvas);display:grid;place-items:center;font-size:16px;flex:none}
+.recap-row .k{font-size:10.5px;color:var(--ink-30);font-family:"IBM Plex Mono",monospace;letter-spacing:.08em}
+.recap-row .v{font-size:14px;font-weight:700;margin-top:3px}
+.recap-row .s{font-size:12px;color:var(--ink-60);margin-top:4px;line-height:1.6}
+.reuse{margin:0 22px 24px;border-radius:18px;background:var(--violet-soft);padding:16px}
+.reuse .rt{font-size:13px;font-weight:800}
+.reuse .rs{font-size:12px;color:var(--ink-60);margin-top:5px;line-height:1.6}
+
+/* sheet + toast */
+.scrim{position:absolute;inset:0;background:rgba(22,22,43,.42);z-index:30;display:none}
+.scrim.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* center modal (새 모임 그룹 만들기) */
+.modal-scrim{position:absolute;inset:0;background:rgba(22,22,43,.42);z-index:32;display:none;
+  align-items:center;justify-content:center;padding:24px}
+.modal-scrim.on{display:flex;animation:fade .25s ease}
+.modal-card{background:var(--paper);border-radius:22px;padding:22px;width:100%;max-width:320px;
+  box-shadow:var(--shadow);animation:pop .28s cubic-bezier(.2,.8,.2,1)}
+.modal-card .mh{display:flex;align-items:center;margin-bottom:16px}
+.modal-card .mh h3{font-size:16px;font-weight:800;margin:0}
+.mclose{margin-left:auto;width:30px;height:30px;border-radius:10px;background:var(--canvas);
+  display:grid;place-items:center;font-size:13px;flex:none}
+.linkrow{display:flex;gap:8px;align-items:center}
+.linkrow .inp{flex:1}
+.inp.mono{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.copybtn{height:50px;padding:0 16px;border-radius:14px;background:var(--ink);color:#fff;
+  font-weight:700;font-size:13px;flex:none}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:31;background:#fff;border-radius:26px 26px 0 0;
+  max-height:84%;display:none;flex-direction:column;overflow:hidden}
+.sheet.on{display:flex;animation:up .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{transform:translateY(100%)}to{transform:none}}
+.grab{width:38px;height:4px;border-radius:3px;background:var(--line);margin:11px auto 4px}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:26px;z-index:40;background:var(--ink);color:#fff;
+  padding:12px 18px;border-radius:13px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;
+  transition:opacity .3s,transform .3s;max-width:86%;text-align:center;line-height:1.5}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(-6px)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ============ 1. LOGIN ============ -->
+<section class="screen on" id="s-login">
+  <div>
+    <div class="eyebrow" style="color:#6E6B90">모임 조율 에이전트</div>
+    <div class="wordmark">다모여<span class="dot">.</span></div>
+    <p class="tagline">언제 · 어디서 · 무엇을 하며 만날 것인가.<br>흩어져 있는 정보를 모아 하나의 일정으로 만들어요.</p>
+  </div>
+  <div class="orbit">
+    <svg viewBox="0 0 300 200" aria-hidden="true">
+      <g stroke="#4A34E8" stroke-width="1.4" fill="none" opacity=".85">
+        <path d="M38 36 Q 108 86 150 100"><animate attributeName="stroke-dasharray" values="0 200;200 0" dur="1.6s" fill="freeze"/></path>
+        <path d="M262 30 Q 190 80 150 100"><animate attributeName="stroke-dasharray" values="0 200;200 0" dur="1.6s" begin=".2s" fill="freeze"/></path>
+        <path d="M26 160 Q 94 132 150 100"><animate attributeName="stroke-dasharray" values="0 200;200 0" dur="1.6s" begin=".4s" fill="freeze"/></path>
+        <path d="M272 168 Q 200 136 150 100"><animate attributeName="stroke-dasharray" values="0 200;200 0" dur="1.6s" begin=".6s" fill="freeze"/></path>
+      </g>
+      <g fill="#8E88C9"><circle cx="38" cy="36" r="5"/><circle cx="262" cy="30" r="5"/><circle cx="26" cy="160" r="5"/><circle cx="272" cy="168" r="5"/></g>
+      <text x="38" y="22" fill="#6E6B90" font-size="9.5" text-anchor="middle" font-family="IBM Plex Mono, monospace">CALENDAR</text>
+      <text x="262" y="16" fill="#6E6B90" font-size="9.5" text-anchor="middle" font-family="IBM Plex Mono, monospace">PREFERENCE</text>
+      <text x="30" y="180" fill="#6E6B90" font-size="9.5" text-anchor="middle" font-family="IBM Plex Mono, monospace">CONTEXT</text>
+      <text x="268" y="188" fill="#6E6B90" font-size="9.5" text-anchor="middle" font-family="IBM Plex Mono, monospace">PLACE API</text>
+      <circle cx="150" cy="100" r="9" fill="#FFD34E"/>
+      <circle cx="150" cy="100" r="9" fill="none" stroke="#FFD34E" stroke-width="1.5" opacity=".6">
+        <animate attributeName="r" values="9;30" dur="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".6;0" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+      <text x="150" y="130" text-anchor="middle" fill="#B9B6D8" font-size="11" font-family="IBM Plex Mono, monospace">ONE SCHEDULE</text>
+    </svg>
+  </div>
+  <div>
+    <button class="gbtn" onclick="go('s-onboard')">
+      <svg width="19" height="19" viewBox="0 0 48 48"><path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-4H24v7.5h12c-.2 2-1.6 5-4.5 7l7 5.4C42.6 36 45 30.6 45 24z"/><path fill="#34A853" d="M24 46c6 0 11-2 14.6-5.4l-7-5.4c-1.9 1.3-4.4 2.2-7.6 2.2-5.8 0-10.7-3.9-12.5-9.1l-7.3 5.6C7.9 41 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.5 28.3c-.5-1.4-.7-2.8-.7-4.3s.3-3 .7-4.3l-7.3-5.7C2.8 17 2 20.4 2 24s.8 7 2.2 10l7.3-5.7z"/><path fill="#EA4335" d="M24 10.8c3.3 0 6.2 1.1 8.5 3.3l6.3-6.3C35 4.1 30 2 24 2 15.4 2 7.9 7 4.2 14l7.3 5.7C13.3 14.6 18.2 10.8 24 10.8z"/></svg>
+      Google로 시작하기
+    </button>
+  </div>
+</section>
+
+<!-- ============ 2. ONBOARDING ============ -->
+<section class="screen" id="s-onboard">
+  <div class="topbar"><h3>어떤 걸 좋아하세요?</h3><button class="skip" onclick="go('s-home')">건너뛰기</button></div>
+  <div class="chat" id="ob-chat">
+    <div class="bubble bot">음식만 물어보는 게 아니에요. 어떤 활동을 좋아하는지, 어떤 분위기를 싫어하는지 — 모임을 정할 때 참고할 만한 거라면 뭐든 좋아요.</div>
+    <div class="examples" id="ob-ex">
+      <div class="ex-label">해당하는 문장을 모두 골라보세요</div>
+      <button class="chip" onclick="toggleObChip(this)">나는 활동적인 거 좋아해</button>
+      <button class="chip" onclick="toggleObChip(this)">해산물은 별로 안 좋아해</button>
+      <button class="chip" onclick="toggleObChip(this)">술 마시는 것도 좋아</button>
+      <button class="chip" onclick="toggleObChip(this)">친구들이랑 만나면 가만히 앉아있는 것보다 뭐 하는 게 좋아</button>
+      <button class="chip" onclick="toggleObChip(this)">회사 사람들이랑은 조용한 데가 좋아</button>
+      <button class="done-btn" id="ob-ex-send" style="margin-top:10px;display:none" onclick="sendObChips()">선택한 문장 보내기</button>
+    </div>
+  </div>
+  <div class="pad" id="ob-card-wrap" style="padding-bottom:12px"></div>
+  <div class="composer">
+    <textarea id="ob-input" rows="1" placeholder="자유롭게 입력하세요" oninput="grow(this);tgl('ob')"></textarea>
+    <button class="send" id="ob-send" disabled onclick="obSend()">↑</button>
+  </div>
+</section>
+
+
+<!-- ============ 3. HOME ============ -->
+<section class="screen" id="s-home">
+  <button class="fab" onclick="openSheet()" aria-label="내 정보"><span>민준</span><i></i></button>
+  <div class="home-head">
+    <div class="hi">다시 오셨네요</div>
+    <div class="wordmark">민준님의<br>모임 그룹</div>
+  </div>
+  <div class="quick-actions">
+    <button class="qa-btn" onclick="openNewGroupModal()">
+      <div class="qa-ic">＋</div>
+      <div class="qa-t">새 모임 만들기</div>
+    </button>
+    <button class="qa-btn" onclick="openJoinModal()">
+      <div class="qa-ic">🔑</div>
+      <div class="qa-t">방에 들어가기</div>
+    </button>
+  </div>
+  <div class="sec-label"><span class="n">01</span><p class="sub">그룹은 한 번 만들면 계속 써요. 일정만 새로 잡으면 됩니다.</p></div>
+  <div class="list" id="home-list">
+    <button class="gcard" onclick="renderConfirmedCard();renderCoordStatus();go('s-group')">
+      <div class="row"><span class="nm">대학 동기들</span></div>
+      <div class="meta">마지막 만남 · 7월 12일 홍대</div>
+      <div class="faces">
+        <div class="face" style="background:#4A34E8">민준</div>
+        <div class="face" style="background:#1F7A63">지민</div>
+        <div class="face" style="background:#E2455B">서연</div>
+        <div class="face" style="background:#8A6A00">태호</div>
+        <span class="face-names">민준 · 지민 · 서연 · 태호</span>
+      </div>
+    </button>
+    <button class="gcard" onclick="toast('데모에서는 대학 동기들 그룹만 열려요')">
+      <div class="row"><span class="nm">회사 파트</span></div>
+      <div class="meta">마지막 만남 · 8월 1일 판교</div>
+      <div class="faces">
+        <div class="face" style="background:#4A34E8">민준</div>
+        <div class="face" style="background:#5B5A78">현우</div>
+        <div class="face" style="background:#A6A4BE">유진</div>
+        <div class="face more">+2</div>
+        <span class="face-names">5명</span>
+      </div>
+    </button>
+    <button class="gcard" onclick="toast('데모에서는 대학 동기들 그룹만 열려요')">
+      <div class="row"><span class="nm">보드게임 모임</span></div>
+      <div class="meta">마지막 만남 · 8월 9일 건대</div>
+      <div class="faces">
+        <div class="face" style="background:#4A34E8">민준</div>
+        <div class="face" style="background:#1F7A63">수아</div>
+        <div class="face" style="background:#E2455B">도현</div>
+        <span class="face-names">민준 · 수아 · 도현</span>
+      </div>
+    </button>
+  </div>
+</section>
+<!-- ============ 3b. GROUP DETAIL ============ -->
+<section class="screen" id="s-group">
+  <div class="topbar" style="position:static"><button class="back" onclick="go('s-home')">←</button><h3>모임 그룹</h3></div>
+  <div class="grp-hero">
+    <div class="eyebrow" style="color:#6E6B90">GROUP</div>
+    <div class="wordmark">대학 동기들</div>
+    <div class="gm">참여자 4명 · 지난 일정 4개<br>이 그룹의 캘린더 연동과 선호 정보는 계속 유지돼요.</div>
+  </div>
+
+  <div id="coord-status-wrap" style="display:none"></div>
+  <div id="confirmed-card-wrap" style="display:none"></div>
+
+  <div class="sec-label"><span class="n">참여자</span></div>
+  <div class="list" style="gap:9px">
+    <div class="mrow"><div class="face" style="background:#1F7A63">지민</div><div><div class="mn">지민</div><div class="mm">선호 5건 기록됨</div></div><span class="st ok">연동됨</span></div>
+    <div class="mrow"><div class="face" style="background:#4A34E8">민준</div><div><div class="mn">민준 (나)</div><div class="mm">선호 4건 기록됨</div></div><span class="st ok">연동됨</span></div>
+    <div class="mrow"><div class="face" style="background:#E2455B">서연</div><div><div class="mn">서연</div><div class="mm">선호 6건 기록됨</div></div><span class="st ok">연동됨</span></div>
+    <div class="mrow"><div class="face" style="background:#8A6A00">태호</div><div><div class="mn">태호</div><div class="mm">선호 2건 기록됨</div></div><span class="st pend">연동 대기</span></div>
+  </div>
+
+  <div class="sec-label"><span class="n">일정</span><h2 class="title" style="margin:0">지난 만남</h2></div>
+  <div class="tl">
+    <div class="tlrow"><div class="rail"><div class="dot past"></div><div class="line"></div></div>
+      <div class="body"><div class="tt">홍대 보드게임카페 + 저녁</div><div class="td">2026.07.12(토) 18:00</div></div></div>
+    <div class="tlrow"><div class="rail"><div class="dot past"></div><div class="line"></div></div>
+      <div class="body"><div class="tt">건대 볼링장</div><div class="td">2026.06.20(토) 19:00</div></div></div>
+    <div class="tlrow"><div class="rail"><div class="dot past"></div><div class="line"></div></div>
+      <div class="body"><div class="tt">신촌 삼겹살집</div><div class="td">2026.05.30(금) 19:30</div></div></div>
+    <div class="tlrow"><div class="rail"><div class="dot past"></div></div>
+      <div class="body"><div class="tt">여의도 한강 피크닉</div><div class="td">2026.05.03(토) 15:00</div></div></div>
+  </div>
+
+  <div class="pad" style="padding-bottom:26px"><button class="done-btn" onclick="go('s-new-people')">이 그룹으로 새 일정 만들기</button></div>
+</section>
+<!-- ============ 4-1. NEW SCHEDULE · 참여자 선택 ============ -->
+<section class="screen" id="s-new-people">
+  <div class="topbar"><button class="back" onclick="renderConfirmedCard();renderCoordStatus();go('s-group')">←</button><h3>새 일정 — 참여자 선택</h3></div>
+  <div class="pad" style="padding-bottom:16px">
+    <h2 class="title">이번엔 누가 참여하나요?</h2>
+    <p class="sub">방의 참여자 중 이번 모임에 참여할 사람을 골라주세요. 기본값은 전원 선택이에요.</p>
+  </div>
+  <div class="pad">
+    <div class="people-pick" id="people-pick">
+      <button class="person sel" data-name="지민" onclick="togglePerson(this)">
+        <div class="face" style="background:#1F7A63">지민</div>지민<span class="chk">✓</span>
+      </button>
+      <button class="person sel" data-name="민준" onclick="togglePerson(this)">
+        <div class="face" style="background:#4A34E8">민준</div>민준 (나)<span class="chk">✓</span>
+      </button>
+      <button class="person sel" data-name="서연" onclick="togglePerson(this)">
+        <div class="face" style="background:#E2455B">서연</div>서연<span class="chk">✓</span>
+      </button>
+      <button class="person sel" data-name="태호" onclick="togglePerson(this)">
+        <div class="face" style="background:#8A6A00">태호</div>태호<span class="chk">✓</span>
+      </button>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="pad" style="padding-bottom:26px"><button class="done-btn" onclick="peopleNext()">다음</button></div>
+</section>
+<!-- ============ 4-2. NEW SCHEDULE · 지역/시간대/날짜 ============ -->
+<section class="screen" id="s-new-cond">
+  <div class="topbar"><button class="back" onclick="go('s-new-people')">←</button><h3>새 일정 — 조건</h3></div>
+
+  <div class="block" style="padding-top:8px">
+    <div class="lbl">어느 지역에서 만나요? <span class="req">필수</span></div>
+    <input class="inp" id="region" placeholder="지역을 입력하세요 (예: 건대)" oninput="document.getElementById('region').classList.remove('bad')">
+    <div class="regions">
+      <button class="rchip" onclick="pickRegion(this)">건대</button>
+      <button class="rchip" onclick="pickRegion(this)">홍대</button>
+      <button class="rchip" onclick="pickRegion(this)">강남</button>
+      <button class="rchip" onclick="pickRegion(this)">성수</button>
+      <button class="rchip" onclick="pickRegion(this)">여의도</button>
+      <button class="rchip" onclick="pickRegion(this)">신촌</button>
+    </div>
+    <div class="hintsm">지역은 추측하지 않아요. 반드시 직접 입력해주세요.</div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">언제쯤 만나고 싶어요? <span class="opt">선택</span></div>
+    <div class="cal-wrap">
+      <div class="cal-nav">
+        <button onclick="changeMonth(-1)" aria-label="이전 달">‹</button>
+        <div class="cal-title" id="cal-title">2026년 8월</div>
+        <button onclick="changeMonth(1)" aria-label="다음 달">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <button class="cal-allmonth" id="cal-allmonth-btn" onclick="pickWholeMonth()">이 달 전체로 볼게요</button>
+    </div>
+    <div class="hintsm" id="cal-result">아직 선택하지 않았어요</div>
+    <div class="hintsm">시작일과 종료일을 순서대로 눌러주세요. 그 안에서만 캘린더 일정을 확인해요.</div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">희망 시간대 <span class="opt">선택</span></div>
+    <div class="timegrid">
+      <button class="tslot" onclick="pickTime(this)"><div class="t1">낮</div><div class="t2">11-15</div></button>
+      <button class="tslot" onclick="pickTime(this)"><div class="t1">늦은 오후</div><div class="t2">15-18</div></button>
+      <button class="tslot" onclick="pickTime(this)"><div class="t1">저녁</div><div class="t2">18-22</div></button>
+      <button class="tslot" onclick="pickTime(this)"><div class="t1">상관없음</div><div class="t2">ANY</div></button>
+    </div>
+    <div class="hintsm">실제 범위는 여기서 고른 값을 기준으로 써요.</div>
+  </div>
+
+  <div class="spacer"></div>
+  <div class="pad" style="padding-bottom:26px"><button class="done-btn" onclick="condNext()">다음</button></div>
+</section>
+
+<!-- ============ 4-3. NEW SCHEDULE · 본인 일정 확인 ============ -->
+<section class="screen" id="s-my-dates">
+  <div class="topbar"><button class="back" onclick="go('s-group')">←</button><h3>내 일정 확인</h3></div>
+  <div class="pad" style="padding-bottom:8px">
+    <h2 class="title">가능한 날짜를 모두 골라주세요</h2>
+    <p class="sub" id="mydates-sub">이 범위 안에서 캘린더를 확인했어요.</p>
+  </div>
+  <div class="pad">
+    <div class="cal-wrap">
+      <div class="cal-nav">
+        <button onclick="changeMyDatesMonth(-1)" aria-label="이전 달">‹</button>
+        <div class="cal-title" id="mydates-cal-title">2026년 8월</div>
+        <button onclick="changeMyDatesMonth(1)" aria-label="다음 달">›</button>
+      </div>
+      <div class="cal-grid" id="mydates-cal-grid"></div>
+      <div class="cal-legend" id="mydates-legend">
+        <span><i class="cl-dot free"></i>가능</span>
+        <span><i class="cl-dot busy"></i>다른 일정</span>
+      </div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="pad" style="padding-bottom:26px"><button class="done-btn" onclick="submitMyDates()">확인</button></div>
+</section>
+
+<!-- ============ 4-4. NEW SCHEDULE · 모임 컨텍스트 챗봇 ============ -->
+<section class="screen" id="s-new-purpose">
+  <div class="topbar"><button class="back" onclick="renderConfirmedCard();renderCoordStatus();go('s-group')">←</button><h3>새 일정 — 모임 컨텍스트</h3></div>
+  <div class="chat" id="ctx-chat">
+    <div class="bubble bot">이번 모임은 어떤 자리인지 알려주세요.</div>
+    <div class="examples" id="ctx-ex">
+      <div class="ex-label">해당하는 문장을 모두 골라보세요</div>
+      <button class="chip" onclick="toggleCtxChip(this)">오랜만에 만나서 재밌게 놀고 싶어</button>
+      <button class="chip" onclick="toggleCtxChip(this)">가볍게 밥만 먹어도 좋아</button>
+      <button class="chip" onclick="toggleCtxChip(this)">이번엔 다 같이 놀거리가 있으면 좋겠어</button>
+      <button class="done-btn" id="ctx-ex-send" style="margin-top:10px;display:none" onclick="sendCtxChips()">선택한 문장 보내기</button>
+    </div>
+  </div>
+  <div class="composer">
+    <textarea id="ctx-input" rows="1" placeholder="자유롭게 입력하거나 위 문장을 골라보세요" oninput="grow(this);tgl('ctx')"></textarea>
+    <button class="send" id="ctx-send" disabled onclick="ctxSend()">↑</button>
+  </div>
+</section>
+<!-- ============ 4-5. NEW SCHEDULE · 요약 ============ -->
+<section class="screen" id="s-new-summary">
+  <div class="topbar"><button class="back" id="sum-back-btn" onclick="go('s-new-purpose')">←</button><h3>새 일정 — 확인</h3></div>
+  <div class="pad" style="padding-bottom:8px">
+    <h2 class="title">이대로 진행할까요?</h2>
+    <p class="sub" id="sum-hint">이전 화면으로 돌아가지 않고, 아래에서 바로 수정할 수 있어요.</p>
+  </div>
+
+  <div class="block">
+    <div class="lbl">참여자</div>
+    <div class="people-pick" id="sum-people-pick"></div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">모임 컨텍스트</div>
+    <div class="nl-box" id="sum-nl-box"><textarea id="sum-nl" rows="3" oninput="syncPurpose(this)"></textarea></div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">지역</div>
+    <input class="inp" id="sum-region" oninput="syncRegion(this)">
+  </div>
+
+  <div class="block">
+    <div class="lbl">날짜</div>
+    <div class="hintsm" id="sum-cal-range" style="margin-top:2px">아직 선택하지 않았어요</div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">희망 시간대 <span class="opt">선택</span></div>
+    <div class="timegrid" id="sum-timegrid">
+      <button class="tslot" onclick="pickSumTime(this)"><div class="t1">낮</div><div class="t2">11-15</div></button>
+      <button class="tslot" onclick="pickSumTime(this)"><div class="t1">늦은 오후</div><div class="t2">15-18</div></button>
+      <button class="tslot" onclick="pickSumTime(this)"><div class="t1">저녁</div><div class="t2">18-22</div></button>
+      <button class="tslot" onclick="pickSumTime(this)"><div class="t1">상관없음</div><div class="t2">ANY</div></button>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="pad" style="padding-bottom:26px">
+    <button class="done-btn" id="sum-submit-btn" onclick="submitSummary()">이대로 진행하기</button>
+    <div class="hintsm" id="sum-readonly-note" style="display:none;text-align:center">제출된 요약이에요. 수정은 대표자만 할 수 있어요.</div>
+  </div>
+</section>
+<!-- ============ 5. SOLVING ============ -->
+<section class="screen" id="s-solve">
+  <div class="radar">
+    <svg viewBox="0 0 200 200" aria-hidden="true">
+      <circle cx="100" cy="100" r="70" fill="none" stroke="#DEDBEC"/>
+      <circle cx="100" cy="100" r="45" fill="none" stroke="#DEDBEC"/>
+      <g fill="#4A34E8">
+        <circle cx="34" cy="52" r="6"><animate attributeName="cx" values="34;100" dur="2.6s" fill="freeze"/><animate attributeName="cy" values="52;100" dur="2.6s" fill="freeze"/></circle>
+        <circle cx="170" cy="46" r="6"><animate attributeName="cx" values="170;100" dur="2.6s" begin=".15s" fill="freeze"/><animate attributeName="cy" values="46;100" dur="2.6s" begin=".15s" fill="freeze"/></circle>
+        <circle cx="28" cy="158" r="6"><animate attributeName="cx" values="28;100" dur="2.6s" begin=".3s" fill="freeze"/><animate attributeName="cy" values="158;100" dur="2.6s" begin=".3s" fill="freeze"/></circle>
+        <circle cx="164" cy="166" r="6"><animate attributeName="cx" values="164;100" dur="2.6s" begin=".45s" fill="freeze"/><animate attributeName="cy" values="166;100" dur="2.6s" begin=".45s" fill="freeze"/></circle>
+      </g>
+      <circle cx="100" cy="100" r="0" fill="none" stroke="#FFD34E" stroke-width="2">
+        <animate attributeName="r" values="0;46" dur="2.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;0" dur="2.2s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+  </div>
+  <h2 class="title" id="solve-title" style="text-align:center">4명의 일정과 선호를 모으는 중</h2>
+  <div class="steps" id="steps">
+    <div class="step"><div class="bullet">✓</div><div>캘린더에서 공통 가능 시간 계산<span class="sn">CODE · 교집합 연산</span></div></div>
+    <div class="step"><div class="bullet">✓</div><div>참여자 선호 + 이번 모임 요청 종합<span class="sn">LLM · 비정형 해석</span></div></div>
+    <div class="step"><div class="bullet">✓</div><div>이번 모임에 맞는 장소 종류 판단<span class="sn">LLM · 도메인 결정</span></div></div>
+    <div class="step"><div class="bullet">✓</div><div>지역 내 실제 장소 후보 수집<span class="sn">CODE · Kakao Local API</span></div></div>
+    <div class="step"><div class="bullet">✓</div><div>그 시간에 이용 가능한지 검증<span class="sn">RESEARCH AGENT · 영업 정보 조사</span></div></div>
+  </div>
+</section>
+<!-- ============ 6. PROPOSALS ============ -->
+<section class="screen" id="s-props">
+  <div class="topbar"><button class="back" onclick="go('s-new-summary')">←</button><h3>다모여의 제안</h3></div>
+  <div class="pad" style="padding-bottom:4px">
+    <h2 class="title" id="prop-title">토요일 19:00 · 건대</h2>
+    <p class="sub" id="prop-sub">그룹 선호를 바탕으로 이런 자리를 골랐어요.</p>
+  </div>
+  <div class="summary-strip">
+    참여자 선호를 종합해 <b>이런 종류의 자리</b>를 골랐어요.
+    <div class="domchips">
+      <span class="dchip">🎳 활동형</span><span class="dchip">🍺 술 가능</span><span class="dchip">🍚 식사 겸용</span>
+    </div>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="pad" style="padding-bottom:26px"><button class="done-btn ghost" onclick="goToRegen()">↺ 다시 생성하기</button></div>
+</section>
+<!-- ============ 6b. REGENERATE CHAT ============ -->
+<section class="screen" id="s-regen">
+  <div class="topbar"><button class="back" onclick="go('s-props')">←</button><h3>다시 찾아볼게요</h3></div>
+  <div class="chat" id="regen-chat">
+    <div class="bubble bot">뭐가 마음에 안 들었는지 알려주세요.</div>
+  </div>
+  <div class="composer">
+    <textarea id="regen-input" rows="1" placeholder="자유롭게 입력하세요" oninput="grow(this);tgl('regen')"></textarea>
+    <button class="send" id="regen-send" disabled onclick="regenSend()">↑</button>
+  </div>
+</section>
+<!-- ============ 7. DONE ============ -->
+<section class="screen" id="s-done">
+  <div class="done-hero">
+    <div class="eyebrow">일정이 만들어졌어요</div>
+    <div class="wordmark" id="done-title">건대<br>스트라이크 볼링장</div>
+    <div class="when" id="done-when">2026.08.22(토) · 19:00</div>
+  </div>
+  <div class="recap">
+    <div class="recap-row"><div class="ic">📅</div><div><div class="k">CALENDAR</div><div class="v" id="done-cal-count">4명 캘린더에 등록 완료</div></div></div>
+    <div class="recap-row"><div class="ic">🔔</div><div><div class="k">REMINDER</div><div class="v">캘린더 알림 2개 설정</div></div></div>
+    <div class="recap-row"><div class="ic">💬</div><div><div class="k">NOTICE</div><div class="v">그룹에 확정 공지 전송</div></div></div>
+  </div>
+  <div class="pad" style="padding-bottom:26px;display:flex;gap:8px">
+    <button class="btn ghost" onclick="renderConfirmedCard();renderCoordStatus();go('s-group')">그룹으로</button>
+    <button class="btn solid" onclick="renderConfirmedCard();go('s-home')">홈으로</button>
+  </div>
+</section>
+
+
+<!-- ============ [모달] 새 모임 그룹 만들기 ============ -->
+<div class="modal-scrim" id="ng-scrim">
+  <div class="modal-card">
+    <div class="mh"><h3>새 모임 그룹 만들기</h3><button class="mclose" id="ng-close-x" onclick="closeNewGroupModal()" aria-label="닫기">✕</button></div>
+
+    <div id="ng-step-name">
+      <div class="lbl">모임 이름</div>
+      <input class="inp" id="ng-name" placeholder="예: 대학원 스터디" oninput="document.getElementById('ng-name').classList.remove('bad')">
+      <button class="done-btn" style="margin-top:16px" onclick="generateInviteLink()">초대링크 생성</button>
+    </div>
+
+    <div id="ng-step-link" style="display:none">
+      <div class="lbl">모임 이름</div>
+      <input class="inp" id="ng-name-done" disabled style="opacity:.6">
+
+      <div class="lbl" style="margin-top:16px">초대 코드</div>
+      <div class="linkrow">
+        <input class="inp mono" id="ng-code" readonly style="text-align:center;letter-spacing:.15em;font-weight:800">
+        <button class="copybtn" id="ng-code-copy" onclick="copyInviteCode()">복사</button>
+      </div>
+
+      <div class="lbl" style="margin-top:16px">초대링크</div>
+      <div class="linkrow">
+        <input class="inp mono" id="ng-link" readonly>
+        <button class="copybtn" id="ng-copy" onclick="copyInviteLink()">복사</button>
+      </div>
+      <div class="hintsm">코드나 링크, 편한 걸로 공유하면 그룹에 합류할 수 있어요.</div>
+      <button class="done-btn" style="margin-top:16px" onclick="closeNewGroupModal()">완료</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ [모달] 초대 코드로 입장 ============ -->
+<div class="modal-scrim" id="join-scrim">
+  <div class="modal-card">
+    <div class="mh"><h3>초대 코드로 입장</h3><button class="mclose" onclick="closeJoinModal()" aria-label="닫기">✕</button></div>
+    <div class="lbl">초대 코드 <span class="req">8자리</span></div>
+    <input class="inp mono" id="join-code" placeholder="예: 7F3K9QXZ" maxlength="8"
+      style="text-align:center;letter-spacing:.15em;font-weight:800"
+      oninput="this.value=this.value.toUpperCase();document.getElementById('join-code').classList.remove('bad')">
+    <button class="done-btn" style="margin-top:16px" onclick="submitJoinCode()">입장하기</button>
+  </div>
+</div>
+
+<!-- ============ [바텀시트] 내 선호 ============ -->
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="grab"></div>
+  <div class="topbar" style="padding-top:6px"><h3>내 선호</h3><button class="skip" onclick="closeSheet()">닫기</button></div>
+  <div class="chat" id="sh-chat" style="max-height:260px;overflow-y:auto">
+    <div class="bubble bot">지금은 이렇게 알고 있어요. 바뀐 게 있으면 말해주세요.</div>
+    <div id="sh-prefbox-wrap"></div>
+  </div>
+  <div class="composer">
+    <textarea id="sh-input" rows="1" placeholder="예: 요즘은 조용한 데가 더 좋아" oninput="grow(this);tgl('sh')"></textarea>
+    <button class="send" id="sh-send" disabled onclick="shSend()">↑</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ---------- nav ---------- */
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  const el=document.getElementById(id); el.classList.add('on'); el.scrollTop=0;
+}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2200);}
+function grow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,96)+'px';}
+function tgl(p){document.getElementById(p+'-send').disabled=!document.getElementById(p+'-input').value.trim();}
+
+/* ---------- preference structuring ---------- */
+const PREFS=[];
+function structure(text){
+  const out=[];
+  const R=[
+    [/활동적|액티브|뭐 하는 게|움직/, {target:'활동적인 것',sentiment:'positive',strength:.8}],
+    [/가만히 앉아있는 것보다/, {target:'앉아서 대화만 하는 자리',sentiment:'negative',strength:.6}],
+    [/해산물|회 별로|생선/, {target:'해산물',sentiment:'negative',strength:.7}],
+    [/술|맥주|소주|막걸리/, {target:'술',sentiment:'positive',strength:.6}],
+    [/보드게임/, {target:'보드게임',sentiment:'negative',strength:.5}],
+    [/조용/, {target:'조용한 곳',sentiment:'positive',strength:.65}],
+    [/시끄러운/, {target:'시끄러운 곳',sentiment:'negative',strength:.6}],
+    [/고기|삼겹|구이/, {target:'고기',sentiment:'positive',strength:.7}],
+    [/카페/, {target:'카페',sentiment:'negative',strength:.5}],
+    [/매운|맵/, {target:'매운 음식',sentiment:'negative',strength:.6}],
+    [/볼링/, {target:'볼링',sentiment:'positive',strength:.7}],
+    [/걷|산책/, {target:'산책',sentiment:'positive',strength:.6}]
+  ];
+  let ctx='general';
+  if(/회사|직장|팀/.test(text)) ctx='회사 모임';
+  else if(/친구|동기/.test(text)) ctx='친구 모임';
+  R.forEach(([re,base])=>{ if(re.test(text)){ out.push({...base,context:ctx,original_text:text}); } });
+  if(/안 좋아|별로|싫/.test(text)){ out.forEach(o=>{ if(/해산물|보드게임|카페|매운/.test(o.target)) o.sentiment='negative'; }); }
+  return out;
+}
+function renderPrefCard(){
+  const w=document.getElementById('ob-card-wrap');
+  if(!PREFS.length){w.innerHTML='';return;}
+  w.innerHTML=`<div class="prefbox">
+    <div class="ph"><b>이렇게 저장할게요</b><span class="cnt">${PREFS.length} RECORDS</span></div>
+    ${PREFS.map(p=>`<div class="prec">
+      <div class="l1"><span class="tgt">${p.target}</span>
+        <span class="sent ${p.sentiment==='positive'?'pos':'neg'}">${p.sentiment.toUpperCase()}</span>
+        <span class="ctx">${p.context}</span></div>
+      <div class="meter"><i class="${p.sentiment==='negative'?'negb':''}" style="width:${p.strength*100}%"></i></div>
+      <div class="strength-label"><span>strength</span><span>${p.strength}</span></div>
+      <div class="orig">"${p.original_text}"</div>
+    </div>`).join('')}
+  </div>
+  <button class="done-btn" style="margin-top:11px" onclick="go('s-home')">이대로 시작하기</button>`;
+}
+function obPush(t,who){const c=document.getElementById('ob-chat');const d=document.createElement('div');
+  d.className='bubble '+who;d.textContent=t;c.appendChild(d);c.scrollTop=c.scrollHeight;}
+function obHandle(text){
+  obPush(text,'me');
+  const ex=document.getElementById('ob-ex'); if(ex) ex.remove();
+  setTimeout(()=>{
+    const found=structure(text);
+    found.forEach(f=>{ if(!PREFS.some(p=>p.target===f.target)) PREFS.push(f); });
+    obPush(found.length
+      ? `"${found.map(f=>f.target).join(', ')}" 쪽으로 기억해둘게요. 음식 말고 활동이나 분위기도 편하게 말해주세요.`
+      : '알겠어요. 어떤 활동을 좋아하는지, 어떤 자리가 편한지도 알려주면 더 잘 골라요.','bot');
+    renderPrefCard();
+    document.getElementById('ob-chat').scrollTop=99999;
+  },400);
+}
+let OB_SELECTED_CHIPS=[];
+function toggleObChip(b){
+  const idx=OB_SELECTED_CHIPS.indexOf(b);
+  if(idx>-1){ OB_SELECTED_CHIPS.splice(idx,1); b.classList.remove('sel'); }
+  else { OB_SELECTED_CHIPS.push(b); b.classList.add('sel'); }
+  document.getElementById('ob-ex-send').style.display=OB_SELECTED_CHIPS.length?'block':'none';
+}
+function sendObChips(){
+  const texts=OB_SELECTED_CHIPS.map(b=>b.textContent);
+  if(!texts.length) return;
+  const ex=document.getElementById('ob-ex'); if(ex) ex.remove();
+  texts.forEach(t=>obPush(t,'me'));
+  setTimeout(()=>{
+    const combined=texts.join('. ');
+    const found=structure(combined);
+    found.forEach(f=>{ if(!PREFS.some(p=>p.target===f.target)) PREFS.push(f); });
+    obPush(found.length
+      ? `"${found.map(f=>f.target).join(', ')}" 쪽으로 기억해둘게요. 음식 말고 활동이나 분위기도 편하게 말해주세요.`
+      : '알겠어요. 어떤 활동을 좋아하는지, 어떤 자리가 편한지도 알려주면 더 잘 골라요.','bot');
+    renderPrefCard();
+    document.getElementById('ob-chat').scrollTop=99999;
+  },400);
+  OB_SELECTED_CHIPS=[];
+}
+function obSend(){const i=document.getElementById('ob-input');const v=i.value.trim();if(!v)return;
+  i.value='';i.style.height='auto';tgl('ob');obHandle(v);}
+
+
+/* ---------- 달력 선택 UI ---------- */
+let CAL_YEAR=2026, CAL_MONTH=8;
+let RANGE_START=null, RANGE_END=null;
+function toTime(o){ return new Date(o.y,o.m-1,o.d).getTime(); }
+function renderCalendar(){
+  document.getElementById('cal-title').textContent=CAL_YEAR+'년 '+CAL_MONTH+'월';
+  const firstDow=new Date(CAL_YEAR,CAL_MONTH-1,1).getDay();
+  const daysInMonth=new Date(CAL_YEAR,CAL_MONTH,0).getDate();
+  const cells=[];
+  for(let i=0;i<firstDow;i++) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(d);
+  while(cells.length%7!==0) cells.push(null);
+
+  let html='';
+  ['일','월','화','수','목','금','토'].forEach(d=>{ html+=`<div class="cal-dow">${d}</div>`; });
+  cells.forEach(day=>{
+    html+= day===null
+      ? `<div class="cal-day other"></div>`
+      : `<div class="cal-day" onclick="pickDay(${CAL_YEAR},${CAL_MONTH},${day})">${day}</div>`;
+  });
+  document.getElementById('cal-grid').innerHTML=html;
+  applyRangeUI();
+}
+function changeMonth(delta){
+  CAL_MONTH+=delta;
+  if(CAL_MONTH>12){CAL_MONTH=1;CAL_YEAR++;}
+  if(CAL_MONTH<1){CAL_MONTH=12;CAL_YEAR--;}
+  renderCalendar();
+}
+function pickDay(y,m,d){
+  const clicked={y,m,d};
+  if(!RANGE_START || RANGE_END){
+    RANGE_START=clicked; RANGE_END=null;
+  } else if(toTime(clicked) < toTime(RANGE_START)){
+    RANGE_END=RANGE_START; RANGE_START=clicked;
+  } else {
+    RANGE_END=clicked;
+  }
+  applyRangeUI();
+  updateCalResultText();
+}
+function pickWholeMonth(){
+  const lastDay=new Date(CAL_YEAR,CAL_MONTH,0).getDate();
+  RANGE_START={y:CAL_YEAR,m:CAL_MONTH,d:1};
+  RANGE_END={y:CAL_YEAR,m:CAL_MONTH,d:lastDay};
+  applyRangeUI();
+  updateCalResultText();
+}
+function applyRangeUI(){
+  document.querySelectorAll('#cal-grid .cal-day:not(.other)').forEach(el=>{
+    const cur={y:CAL_YEAR,m:CAL_MONTH,d:parseInt(el.textContent)};
+    let sel=false;
+    if(RANGE_START && !RANGE_END){
+      sel = cur.y===RANGE_START.y && cur.m===RANGE_START.m && cur.d===RANGE_START.d;
+    } else if(RANGE_START && RANGE_END){
+      const t=toTime(cur);
+      sel = t>=toTime(RANGE_START) && t<=toTime(RANGE_END);
+    }
+    el.classList.toggle('sel', sel);
+  });
+  const lastDay=new Date(CAL_YEAR,CAL_MONTH,0).getDate();
+  const isWholeMonth = RANGE_START && RANGE_END
+    && RANGE_START.y===CAL_YEAR && RANGE_START.m===CAL_MONTH && RANGE_START.d===1
+    && RANGE_END.y===CAL_YEAR && RANGE_END.m===CAL_MONTH && RANGE_END.d===lastDay;
+  document.getElementById('cal-allmonth-btn').classList.toggle('sel', isWholeMonth);
+}
+function fmtYMD(o){ return o.y+'년 '+o.m+'월 '+o.d+'일'; }
+function calRangeText(){
+  if(!RANGE_START) return '아직 선택하지 않았어요';
+  if(!RANGE_END) return fmtYMD(RANGE_START)+'부터 시작 · 끝나는 날짜를 눌러주세요';
+  if(RANGE_START.y===RANGE_END.y && RANGE_START.m===RANGE_END.m && RANGE_START.d===RANGE_END.d){
+    return fmtYMD(RANGE_START)+' 하루 일정을 살펴볼게요';
+  }
+  if(RANGE_START.y===RANGE_END.y && RANGE_START.m===RANGE_END.m){
+    return RANGE_START.y+'년 '+RANGE_START.m+'월 '+RANGE_START.d+'일 ~ '+RANGE_END.d+'일 일정을 살펴볼게요';
+  }
+  return fmtYMD(RANGE_START)+' ~ '+fmtYMD(RANGE_END)+' 일정을 살펴볼게요';
+}
+function updateCalResultText(){
+  document.getElementById('cal-result').textContent=calRangeText();
+}
+
+/* ---------- 새 일정 · 지역 · 시간대 · 날짜 ---------- */
+function pickRegion(b){
+  document.querySelectorAll('.rchip').forEach(x=>x.classList.remove('sel'));
+  b.classList.add('sel');
+  const r=document.getElementById('region');
+  r.value=b.textContent;
+  r.classList.remove('bad');
+}
+function pickTime(b){
+  document.querySelectorAll('#s-new-cond .tslot').forEach(x=>x.classList.remove('sel'));
+  b.classList.add('sel');
+  SELECTED_TIME=b.querySelector('.t1').textContent;
+}
+function condNext(){
+  const region=document.getElementById('region');
+  if(!region.value.trim()){
+    region.classList.add('bad');
+    region.scrollIntoView({behavior:'smooth',block:'center'});
+    toast('지역은 추측하지 않아요. 직접 입력해주세요.');
+    return;
+  }
+  REGION_TEXT=region.value;
+  goToCtxChat();
+}
+
+/* ---------- 새 일정 · 본인 일정 확인 (캘린더 UI) ---------- */
+const CAL_CONNECTED={ '지민':true, '민준':true, '서연':true, '태호':false };
+let MY_SELECTED_DATES=[];
+let MY_CAL_YEAR=2026, MY_CAL_MONTH=8;
+function inSelectedRange(y,m,d){
+  if(!RANGE_START) return false;
+  const t=new Date(y,m-1,d).getTime();
+  const s=new Date(RANGE_START.y,RANGE_START.m-1,RANGE_START.d).getTime();
+  const eo=RANGE_END||RANGE_START;
+  const e=new Date(eo.y,eo.m-1,eo.d).getTime();
+  return t>=s && t<=e;
+}
+function goToMyDates(){
+  MY_CAL_YEAR=RANGE_START ? RANGE_START.y : MY_CAL_YEAR;
+  MY_CAL_MONTH=RANGE_START ? RANGE_START.m : MY_CAL_MONTH;
+  const connected=CAL_CONNECTED['민준'];
+  document.getElementById('mydates-sub').textContent=connected
+    ? '연동된 캘린더에서 이 범위의 일정을 가져왔어요.'
+    : '캘린더 연동이 안 되어 있어 일정 정보 없이 보여드려요.';
+  document.getElementById('mydates-legend').style.display=connected?'flex':'none';
+  renderMyDatesCalendar();
+  go('s-my-dates');
+}
+function changeMyDatesMonth(delta){
+  MY_CAL_MONTH+=delta;
+  if(MY_CAL_MONTH>12){MY_CAL_MONTH=1;MY_CAL_YEAR++;}
+  if(MY_CAL_MONTH<1){MY_CAL_MONTH=12;MY_CAL_YEAR--;}
+  renderMyDatesCalendar();
+}
+function renderMyDatesCalendar(){
+  document.getElementById('mydates-cal-title').textContent=MY_CAL_YEAR+'년 '+MY_CAL_MONTH+'월';
+  const firstDow=new Date(MY_CAL_YEAR,MY_CAL_MONTH-1,1).getDay();
+  const daysInMonth=new Date(MY_CAL_YEAR,MY_CAL_MONTH,0).getDate();
+  const cells=[];
+  for(let i=0;i<firstDow;i++) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(d);
+  while(cells.length%7!==0) cells.push(null);
+  const connected=CAL_CONNECTED['민준'];
+  let html='';
+  ['일','월','화','수','목','금','토'].forEach(d=>{ html+=`<div class="cal-dow">${d}</div>`; });
+  let dotToggle=0;
+  cells.forEach(day=>{
+    if(day===null){ html+='<div class="cal-day other"></div>'; return; }
+    if(!inSelectedRange(MY_CAL_YEAR,MY_CAL_MONTH,day)){
+      html+=`<div class="cal-day oob"><span>${day}</span></div>`;
+      return;
+    }
+    const key=MY_CAL_YEAR+'-'+MY_CAL_MONTH+'-'+day;
+    const sel=MY_SELECTED_DATES.includes(key)?'sel':'';
+    const dotHtml=connected ? `<i class="cl-dot ${(dotToggle++%3===0)?'busy':'free'}"></i>` : '';
+    html+=`<button class="cal-day avail ${sel}" data-key="${key}" onclick="toggleMyDate(this)">
+      <span>${day}</span>${dotHtml}
+    </button>`;
+  });
+  document.getElementById('mydates-cal-grid').innerHTML=html;
+}
+function toggleMyDate(btn){
+  const key=btn.dataset.key;
+  const idx=MY_SELECTED_DATES.indexOf(key);
+  if(idx>-1){ MY_SELECTED_DATES.splice(idx,1); btn.classList.remove('sel'); }
+  else { MY_SELECTED_DATES.push(key); btn.classList.add('sel'); }
+}
+function submitMyDates(){
+  if(MY_SELECTED_DATES.length===0){ toast('가능한 날짜를 하나 이상 골라주세요'); return; }
+  CONFIRM_STATUS['민준']=true;
+  renderCoordStatus();
+  renderConfirmedCard();
+  go('s-group');
+}
+
+/* ---------- 새 일정 · 모임 컨텍스트 챗봇 ---------- */
+let CTX_SELECTED_CHIPS=[];
+function toggleCtxChip(b){
+  const idx=CTX_SELECTED_CHIPS.indexOf(b);
+  if(idx>-1){ CTX_SELECTED_CHIPS.splice(idx,1); b.classList.remove('sel'); }
+  else { CTX_SELECTED_CHIPS.push(b); b.classList.add('sel'); }
+  document.getElementById('ctx-ex-send').style.display=CTX_SELECTED_CHIPS.length?'block':'none';
+}
+function sendCtxChips(){
+  const texts=CTX_SELECTED_CHIPS.map(b=>b.textContent);
+  if(!texts.length) return;
+  const ex=document.getElementById('ctx-ex'); if(ex) ex.remove();
+  finishCtx(texts.join('. '));
+}
+function ctxSend(){
+  const i=document.getElementById('ctx-input');
+  const v=i.value.trim();
+  if(!v) return;
+  i.value=''; i.style.height='auto'; tgl('ctx');
+  const ex=document.getElementById('ctx-ex'); if(ex) ex.remove();
+  finishCtx(v);
+}
+function finishCtx(text){
+  const c=document.getElementById('ctx-chat');
+  const me=document.createElement('div'); me.className='bubble me'; me.textContent=text; c.appendChild(me);
+  c.scrollTop=c.scrollHeight;
+  PURPOSE_TEXT=text;
+  setTimeout(()=>{
+    const bot=document.createElement('div'); bot.className='bubble bot';
+    bot.textContent='알겠어요, 이 내용을 바탕으로 준비해볼게요.';
+    c.appendChild(bot); c.scrollTop=c.scrollHeight;
+    setTimeout(()=>{
+      renderSummary();
+      setSummaryReadonly(false);
+      document.getElementById('sum-back-btn').onclick=function(){ go('s-new-purpose'); };
+      go('s-new-summary');
+    }, 700);
+  }, 400);
+}
+function goToCtxChat(){
+  document.getElementById('ctx-chat').innerHTML=`<div class="bubble bot">이번 모임은 어떤 자리인지 알려주세요.</div>
+    <div class="examples" id="ctx-ex">
+      <div class="ex-label">해당하는 문장을 모두 골라보세요</div>
+      <button class="chip" onclick="toggleCtxChip(this)">오랜만에 만나서 재밌게 놀고 싶어</button>
+      <button class="chip" onclick="toggleCtxChip(this)">가볍게 밥만 먹어도 좋아</button>
+      <button class="chip" onclick="toggleCtxChip(this)">이번엔 다 같이 놀거리가 있으면 좋겠어</button>
+      <button class="done-btn" id="ctx-ex-send" style="margin-top:10px;display:none" onclick="sendCtxChips()">선택한 문장 보내기</button>
+    </div>`;
+  document.getElementById('ctx-input').value='';
+  CTX_SELECTED_CHIPS=[];
+  tgl('ctx');
+  go('s-new-purpose');
+}
+
+/* ---------- 새 일정 · 요약 (인라인 수정) ---------- */
+let PURPOSE_TEXT='', REGION_TEXT='', SELECTED_TIME=null;
+const ROOM_MEMBERS=[
+  {name:'지민', label:'지민', color:'#1F7A63'},
+  {name:'민준', label:'민준 (나)', color:'#4A34E8'},
+  {name:'서연', label:'서연', color:'#E2455B'},
+  {name:'태호', label:'태호', color:'#8A6A00'}
+];
+function renderSummary(){
+  const wrap=document.getElementById('sum-people-pick');
+  wrap.innerHTML=ROOM_MEMBERS.map(m=>{
+    const sel=SELECTED_PEOPLE.includes(m.name)?'sel':'';
+    return `<button class="person ${sel}" data-name="${m.name}" onclick="toggleSumPerson(this)">
+      <div class="face" style="background:${m.color}">${m.name}</div>${m.label}<span class="chk">✓</span>
+    </button>`;
+  }).join('');
+
+  document.getElementById('sum-nl').value=PURPOSE_TEXT;
+  document.getElementById('sum-nl-box').classList.remove('bad');
+  document.getElementById('sum-region').value=REGION_TEXT;
+  document.getElementById('sum-region').classList.remove('bad');
+  document.getElementById('sum-cal-range').textContent=calRangeText();
+
+  document.querySelectorAll('#sum-timegrid .tslot').forEach(b=>{
+    b.classList.toggle('sel', b.querySelector('.t1').textContent===SELECTED_TIME);
+  });
+}
+function toggleSumPerson(btn){
+  const name=btn.dataset.name;
+  if(SELECTED_PEOPLE.includes(name)){
+    SELECTED_PEOPLE=SELECTED_PEOPLE.filter(n=>n!==name);
+    btn.classList.remove('sel');
+  } else {
+    SELECTED_PEOPLE.push(name);
+    btn.classList.add('sel');
+  }
+  document.querySelectorAll('#people-pick .person').forEach(b=>{
+    b.classList.toggle('sel', SELECTED_PEOPLE.includes(b.dataset.name));
+  });
+}
+function syncPurpose(el){
+  PURPOSE_TEXT=el.value;
+  document.getElementById('sum-nl-box').classList.remove('bad');
+}
+function syncRegion(el){
+  REGION_TEXT=el.value;
+  document.getElementById('sum-region').classList.remove('bad');
+}
+function pickSumTime(b){
+  document.querySelectorAll('#sum-timegrid .tslot').forEach(x=>x.classList.remove('sel'));
+  b.classList.add('sel');
+  SELECTED_TIME=b.querySelector('.t1').textContent;
+  document.querySelectorAll('#s-new-cond .tslot').forEach(x=>{
+    x.classList.toggle('sel', x.querySelector('.t1').textContent===SELECTED_TIME);
+  });
+}
+function submitSummary(){
+  if(SELECTED_PEOPLE.length===0){ toast('참여자를 한 명 이상 선택해주세요'); return; }
+  if(!PURPOSE_TEXT.trim()){
+    document.getElementById('sum-nl-box').classList.add('bad');
+    toast('이번 모임이 어떤 자리인지 알려주세요');
+    return;
+  }
+  if(!REGION_TEXT.trim()){
+    document.getElementById('sum-region').classList.add('bad');
+    toast('지역은 추측하지 않아요. 직접 입력해주세요.');
+    return;
+  }
+  CONFIRM_STATUS={};
+  SELECTED_PEOPLE.forEach(n=>{ CONFIRM_STATUS[n]=false; });
+  MY_SELECTED_DATES=[];
+  renderCoordStatus();
+  renderConfirmedCard();
+  toast('참여자들에게 날짜 확인을 요청했어요');
+  go('s-group');
+}
+
+/* ---------- 요약 화면 읽기전용 모드 ---------- */
+function setSummaryReadonly(readonly){
+  document.getElementById('s-new-summary').classList.toggle('readonly', readonly);
+  document.getElementById('sum-submit-btn').style.display=readonly?'none':'block';
+  document.getElementById('sum-readonly-note').style.display=readonly?'block':'none';
+  document.getElementById('sum-hint').textContent = readonly
+    ? '참여자들에게 공유된 요약이에요. 이 화면에서는 수정할 수 없어요.'
+    : '이전 화면으로 돌아가지 않고, 아래에서 바로 수정할 수 있어요.';
+}
+function viewSummaryReadonly(){
+  renderSummary();
+  setSummaryReadonly(true);
+  document.getElementById('sum-back-btn').onclick=function(){ go('s-group'); };
+  go('s-new-summary');
+}
+
+/* ---------- 조율 진행 중 ---------- */
+function goToSolve(){
+  document.getElementById('solve-title').textContent=SELECTED_PEOPLE.length+'명의 일정과 선호를 모으는 중';
+  go('s-solve');
+  const steps=[...document.querySelectorAll('#steps .step')];
+  steps.forEach(s=>s.classList.remove('on'));
+  steps.forEach((s,i)=>setTimeout(()=>s.classList.add('on'), 380+i*560));
+  setTimeout(()=>{
+    document.getElementById('prop-title').textContent='2026.08.22(토) 19:00 · '+REGION_TEXT;
+    document.getElementById('prop-sub').textContent='"'+PURPOSE_TEXT+'" 라고 하신 내용을 바탕으로, 활동이 있는 자리로 해석했어요.';
+    renderProps();
+    go('s-props');
+  }, 380+steps.length*560+400);
+}
+
+/* ---------- 제안 목록 ---------- */
+const PROPS=[
+  {cat:'스포츠,오락 > 볼링장', name:'건대 스트라이크 볼링장', addr:'광진구 아차산로 200',
+   hours:'토요일 10:00 - 02:00 · 19:00 이용 가능', src:'영업시간 확인됨',
+   reasons:[['fit','그룹 선호와 적합도 높음'],['time','모임 시간에 이용 가능']]},
+  {cat:'음식점 > 술집 > 펍', name:'건대 브루펍 하우스', addr:'광진구 능동로 110',
+   hours:'토요일 17:00 - 01:00 · 19:00 영업 중', src:'영업시간 확인됨',
+   reasons:[['fit','그룹 선호와 적합도 높음'],['time','모임 시간에 이용 가능']]},
+  {cat:'스포츠,오락 > 방탈출', name:'건대 이스케이프 존', addr:'광진구 동일로 42',
+   hours:'토요일 11:00 - 23:00 · 19:00 예약 가능', src:'영업시간 확인됨',
+   reasons:[['fit','활동형 모임에 부합'],['time','모임 시간에 이용 가능']]}
+];
+function renderProps(){
+  document.getElementById('cards').innerHTML=PROPS.map((p,i)=>`
+    <article class="prop">
+      <div class="prop-top">
+        <span class="rank">0${i+1}</span>
+        <div><span class="prop-cat">${p.cat}</span>
+          <div class="prop-name">${p.name}</div>
+          <div class="prop-addr">${p.addr}</div></div>
+      </div>
+      <div class="prop-body">
+        <div class="verify">
+          <div class="vh">✓ 이용 가능 확인</div>
+          <div class="vl">${p.hours}</div>
+          <div class="vsrc">${p.src}</div>
+        </div>
+        <div class="reasons">${p.reasons.map(r=>`<span class="tag ${r[0]}">${r[1]}</span>`).join('')}</div>
+        <button class="plink" onclick="toast('지도 상세 페이지로 이동해요')">가격 · 사진 · 리뷰 보기 →</button>
+      </div>
+      <div class="prop-actions">
+        <button class="btn solid" style="flex:1" onclick="confirmProp(${i})">이걸로 확정</button>
+      </div>
+    </article>`).join('');
+}
+function confirmProp(i){
+  const p=PROPS[i];
+  const when=document.getElementById('prop-title').textContent;
+  CONFIRMED_SCHEDULE={
+    place:p.name,
+    when:when,
+    who:SELECTED_PEOPLE.join(' · ')
+  };
+  CONFIRM_STATUS={};
+  const nameParts=p.name.split(' ');
+  document.getElementById('done-title').innerHTML=nameParts[0]+'<br>'+nameParts.slice(1).join(' ');
+  document.getElementById('done-when').textContent=when;
+  document.getElementById('done-cal-count').textContent=SELECTED_PEOPLE.length+'명 캘린더에 등록 완료';
+  go('s-done');
+}
+
+/* ---------- 재생성 사유 챗봇 ---------- */
+function goToRegen(){
+  document.getElementById('regen-chat').innerHTML='<div class="bubble bot">뭐가 마음에 안 들었는지 알려주세요.</div>';
+  document.getElementById('regen-input').value='';
+  tgl('regen');
+  go('s-regen');
+}
+function regenSend(){
+  const i=document.getElementById('regen-input');
+  const v=i.value.trim();
+  if(!v) return;
+  const c=document.getElementById('regen-chat');
+  const me=document.createElement('div'); me.className='bubble me'; me.textContent=v; c.appendChild(me);
+  i.value=''; i.style.height='auto'; tgl('regen');
+  c.scrollTop=c.scrollHeight;
+  setTimeout(()=>{
+    const bot=document.createElement('div'); bot.className='bubble bot';
+    bot.textContent='알겠어요, 그 부분을 반영해서 다시 찾아볼게요.';
+    c.appendChild(bot); c.scrollTop=c.scrollHeight;
+    setTimeout(()=>{ goToSolve(); }, 700);
+  }, 500);
+}
+
+/* ---------- 새 일정 · 참여자 선택 ---------- */
+/* 기본값: 방의 전체 참여자가 전원 선택된 상태 */
+let SELECTED_PEOPLE=['지민','민준','서연','태호'];
+function togglePerson(btn){
+  const name=btn.dataset.name;
+  if(SELECTED_PEOPLE.includes(name)){
+    SELECTED_PEOPLE=SELECTED_PEOPLE.filter(n=>n!==name);
+    btn.classList.remove('sel');
+  } else {
+    SELECTED_PEOPLE.push(name);
+    btn.classList.add('sel');
+  }
+}
+function peopleNext(){
+  if(SELECTED_PEOPLE.length===0){ toast('참여자를 한 명 이상 선택해주세요'); return; }
+  go('s-new-cond');
+}
+
+/* ---------- 그룹 상세: 확정된 다가오는 일정 카드 ---------- */
+/* 새 일정을 확정하면(완료 화면 단계에서) 이 값이 채워지고, 그룹 화면에 들어올 때마다 다시 그려집니다. */
+/* 일정이 지나면 null로 되돌리면 카드가 사라집니다. */
+let CONFIRMED_SCHEDULE=null;
+function renderConfirmedCard(){
+  const w=document.getElementById('confirmed-card-wrap');
+  if(!CONFIRMED_SCHEDULE){ w.style.display='none'; w.innerHTML=''; return; }
+  const s=CONFIRMED_SCHEDULE;
+  w.style.display='block';
+  w.innerHTML=`<div class="confirmed-card">
+    <div class="cc-eyebrow">확정된 다가오는 일정</div>
+    <div class="cc-title">${s.place}</div>
+    <div class="cc-when">${s.when}</div>
+    <div class="cc-who">참여자 · ${s.who}</div>
+  </div>`;
+}
+
+/* ---------- 그룹 상세: 일정 조율 상태 카드 ---------- */
+/* CONFIRM_STATUS가 비어있으면 카드 없음. 참여자별 확인 여부를 보여주고,
+   전원 확인되면(그리고 내가 이 일정을 시작한 사람이면) "일정 생성하기" 버튼이 뜹니다. */
+let CONFIRM_STATUS={};
+const IS_HOST=true; /* 데모: 새 일정을 시작한 사람은 항상 나(민준)라고 가정 */
+function renderCoordStatus(){
+  const w=document.getElementById('coord-status-wrap');
+  const names=Object.keys(CONFIRM_STATUS);
+  if(!names.length){ w.style.display='none'; w.innerHTML=''; return; }
+  w.style.display='block';
+  const allDone=names.every(n=>CONFIRM_STATUS[n]);
+  const rows=names.map(n=>{
+    const isMe=n==='민준';
+    let right;
+    if(CONFIRM_STATUS[n]){ right=`<span class="coord-badge ok">확인 완료</span>`; }
+    else if(isMe){ right=`<button class="coord-pick" onclick="goToMyDates()">선택하기</button>`; }
+    else { right=`<span class="coord-badge">대기중</span>`; }
+    return `<div class="coord-row"><span>${n}${isMe?' (나)':''}</span>${right}</div>`;
+  }).join('');
+  let action='';
+  if(allDone && IS_HOST){
+    action=`<button class="cb-btn" onclick="goToSolve()">일정 생성하기</button>`;
+  } else if(!allDone){
+    action=`<button class="cb-demo" onclick="simulateOthersConfirm()">(데모) 나머지 참여자 확인 완료로 표시</button>`;
+  }
+  w.innerHTML=`<div class="coord-banner">
+    <div class="cb-eyebrow">일정 조율 중</div>
+    <div class="cb-desc">참여자들이 가능한 날짜를 확인하고 있어요.</div>
+    <button class="cb-summary-link" onclick="viewSummaryReadonly()">요약 보기</button>
+    <div class="coord-list">${rows}</div>
+    ${action}
+  </div>`;
+}
+function simulateOthersConfirm(){
+  Object.keys(CONFIRM_STATUS).forEach(n=>{ CONFIRM_STATUS[n]=true; });
+  renderCoordStatus();
+  toast('나머지 참여자가 모두 확인을 완료했어요');
+}
+
+/* ---------- 새 모임 그룹 만들기 모달 ---------- */
+let NG_CREATED=null;
+/* 데모용 초대 코드 저장소. 내가 만든 방의 코드는 여기에 자동으로 쌓이고,
+   아래 코드 하나는 "남이 공유해준 초대 코드"를 받는 상황을 보여주기 위한 데모용입니다. */
+const ROOM_CODES={
+  '7F3K9QXZ':{name:'동아리 사람들', meta:'마지막 만남 · 6월 5일 성수',
+    members:[{name:'하늘',color:'#1F7A63'},{name:'민준',color:'#4A34E8'},{name:'준서',color:'#E2455B'}]}
+};
+function openNewGroupModal(){
+  document.getElementById('ng-name').value='';
+  document.getElementById('ng-name').classList.remove('bad');
+  document.getElementById('ng-step-name').style.display='block';
+  document.getElementById('ng-step-link').style.display='none';
+  document.getElementById('ng-close-x').style.display='grid';
+  document.getElementById('ng-copy').textContent='복사';
+  NG_CREATED=null;
+  document.getElementById('ng-scrim').classList.add('on');
+}
+function generateInviteLink(){
+  const nameInput=document.getElementById('ng-name');
+  const name=nameInput.value.trim();
+  if(!name){ nameInput.classList.add('bad'); toast('모임 이름을 입력해주세요'); return; }
+  const code=genInviteCode();
+  const link='https://damoyeo.app/invite/'+code.toLowerCase();
+  document.getElementById('ng-name-done').value=name;
+  document.getElementById('ng-code').value=code;
+  document.getElementById('ng-link').value=link;
+  document.getElementById('ng-step-name').style.display='none';
+  document.getElementById('ng-step-link').style.display='block';
+  document.getElementById('ng-close-x').style.display='none';
+  ROOM_CODES[code]={name, mine:true};
+  NG_CREATED={name,link,code};
+}
+function genInviteCode(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code='';
+  for(let i=0;i<8;i++) code+=chars[Math.floor(Math.random()*chars.length)];
+  return code;
+}
+function copyInviteCode(){
+  const code=document.getElementById('ng-code').value;
+  if(navigator.clipboard){ navigator.clipboard.writeText(code).catch(()=>{}); }
+  const btn=document.getElementById('ng-code-copy');
+  btn.textContent='복사됨';
+  toast('코드가 복사됐어요');
+  setTimeout(()=>{btn.textContent='복사';},1500);
+}
+function copyInviteLink(){
+  const link=document.getElementById('ng-link').value;
+  if(navigator.clipboard){ navigator.clipboard.writeText(link).catch(()=>{}); }
+  const btn=document.getElementById('ng-copy');
+  btn.textContent='복사됨';
+  toast('링크가 복사됐어요');
+  setTimeout(()=>{btn.textContent='복사';},1500);
+}
+function closeNewGroupModal(){
+  document.getElementById('ng-scrim').classList.remove('on');
+  if(NG_CREATED){ addNewGroupCard(NG_CREATED.name); NG_CREATED=null; }
+}
+function addNewGroupCard(name){
+  const list=document.getElementById('home-list');
+  const card=document.createElement('button');
+  card.className='gcard';
+  card.onclick=()=>toast('데모에서는 대학 동기들 그룹만 열려요');
+  card.innerHTML=`
+    <div class="row"><span class="nm">${name}</span></div>
+    <div class="meta">아직 첫 모임 전이에요</div>
+    <div class="faces">
+      <div class="face" style="background:#4A34E8">민준</div>
+      <span class="face-names">민준 (나)</span>
+    </div>`;
+  list.insertBefore(card, list.firstChild);
+  toast('새 모임 그룹이 만들어졌어요');
+}
+
+/* ---------- 초대 코드로 입장 ---------- */
+function openJoinModal(){
+  document.getElementById('join-code').value='';
+  document.getElementById('join-code').classList.remove('bad');
+  document.getElementById('join-scrim').classList.add('on');
+}
+function closeJoinModal(){
+  document.getElementById('join-scrim').classList.remove('on');
+}
+function submitJoinCode(){
+  const input=document.getElementById('join-code');
+  const code=input.value.trim().toUpperCase();
+  if(code.length!==8){
+    input.classList.add('bad');
+    toast('초대 코드는 8자리예요');
+    return;
+  }
+  const room=ROOM_CODES[code];
+  if(!room){
+    input.classList.add('bad');
+    toast('존재하지 않는 초대 코드예요');
+    return;
+  }
+  if(room.mine){
+    closeJoinModal();
+    toast('이미 내가 만든 방이에요');
+    return;
+  }
+  if(room.joined){
+    closeJoinModal();
+    toast('이미 참여 중인 방이에요');
+    return;
+  }
+  room.joined=true;
+  closeJoinModal();
+  addJoinedGroupCard(room);
+  toast(room.name+' 방에 들어왔어요');
+}
+function addJoinedGroupCard(room){
+  const list=document.getElementById('home-list');
+  const card=document.createElement('button');
+  card.className='gcard';
+  card.onclick=()=>toast('데모에서는 대학 동기들 그룹만 열려요');
+  card.innerHTML=`
+    <div class="row"><span class="nm">${room.name}</span></div>
+    <div class="meta">${room.meta}</div>
+    <div class="faces">
+      ${room.members.map(m=>`<div class="face" style="background:${m.color}">${m.name}</div>`).join('')}
+      <span class="face-names">${room.members.map(m=>m.name).join(' · ')}</span>
+    </div>`;
+  list.insertBefore(card, list.firstChild);
+}
+
+/* ---------- 내 선호 바텀시트 ---------- */
+function openSheet(){
+  renderSheetPrefs();
+  document.getElementById('scrim').classList.add('on');
+  document.getElementById('sheet').classList.add('on');
+}
+function closeSheet(){
+  document.getElementById('scrim').classList.remove('on');
+  document.getElementById('sheet').classList.remove('on');
+}
+function renderSheetPrefs(){
+  const w=document.getElementById('sh-prefbox-wrap');
+  if(!PREFS.length){
+    w.innerHTML='<div class="hintsm">아직 기록된 선호가 없어요. 아래에 편하게 알려주세요.</div>';
+    return;
+  }
+  w.innerHTML=`<div class="prefbox">
+    <div class="ph"><b>기록된 선호</b><span class="cnt">${PREFS.length} RECORDS</span></div>
+    ${PREFS.map(p=>`<div class="prec">
+      <div class="l1"><span class="tgt">${p.target}</span>
+        <span class="sent ${p.sentiment==='positive'?'pos':'neg'}">${p.sentiment.toUpperCase()}</span>
+        <span class="ctx">${p.context}</span></div>
+      <div class="meter"><i class="${p.sentiment==='negative'?'negb':''}" style="width:${p.strength*100}%"></i></div>
+      <div class="strength-label"><span>strength</span><span>${p.strength}</span></div>
+    </div>`).join('')}
+  </div>`;
+}
+function shSend(){
+  const i=document.getElementById('sh-input');
+  const v=i.value.trim();
+  if(!v) return;
+  const c=document.getElementById('sh-chat');
+  const me=document.createElement('div'); me.className='bubble me'; me.textContent=v; c.appendChild(me);
+  i.value=''; i.style.height='auto'; tgl('sh');
+  c.scrollTop=c.scrollHeight;
+  setTimeout(()=>{
+    const found=structure(v);
+    found.forEach(f=>{
+      const existing=PREFS.find(p=>p.target===f.target);
+      if(existing){ existing.sentiment=f.sentiment; existing.strength=f.strength; existing.context=f.context; }
+      else PREFS.push(f);
+    });
+    const bot=document.createElement('div'); bot.className='bubble bot';
+    bot.textContent=found.length
+      ? `"${found.map(x=>x.target).join(', ')}" 쪽으로 갱신했어요. 다음 일정부터 반영돼요.`
+      : '기록해둘게요.';
+    c.appendChild(bot); c.scrollTop=c.scrollHeight;
+    renderSheetPrefs();
+    toast('선호가 갱신됐어요');
+  },400);
+}
+
+/* ---------- 초기화 ---------- */
+renderCalendar();
+</script>
+</body>
+</html>

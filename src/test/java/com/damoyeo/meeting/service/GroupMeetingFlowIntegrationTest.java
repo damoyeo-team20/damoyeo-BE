@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.damoyeo.ai.AiClient;
 import com.damoyeo.group.dto.CreateGroupRequest;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.Map;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -96,6 +98,8 @@ class GroupMeetingFlowIntegrationTest {
                 )
         );
         MeetingResponse prepared = meetingService.prepareForChat(userId, draft.id());
+        ArgumentCaptor<AiClient.ScheduleResolutionRequest> scheduleRequest = ArgumentCaptor.forClass(AiClient.ScheduleResolutionRequest.class);
+        verify(aiClient).resolveSchedule(org.mockito.ArgumentMatchers.eq(draft.id()), scheduleRequest.capture());
         when(aiClient.chat(anyLong(), any(), any())).thenReturn(new AiClient.MeetingChatResponse("무엇을 하고 싶은지 알려주세요."));
         meetingService.chat(userId, draft.id(), "조용하게 저녁을 먹고 싶어요");
         when(aiClient.summarizeContext(anyLong(), any())).thenReturn(
@@ -116,6 +120,8 @@ class GroupMeetingFlowIntegrationTest {
         assertThat(submitted.status()).isEqualTo(MeetingStatus.SURVEYING);
         assertThat(availability.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
         assertThat(prepared.status()).isEqualTo(MeetingStatus.READY_TO_PLAN);
+        assertThat(prepared.scheduleResolutionReason()).isEqualTo("참여자 모두가 가능한 날짜입니다.");
+        assertThat(scheduleRequest.getValue().commonAvailableDates()).containsExactly("2026-08-23");
         assertThat(planning.status()).isEqualTo(MeetingStatus.PROPOSING);
         assertThat(planning.participantMemberIds()).containsExactly(group.members().getFirst().memberId());
     }

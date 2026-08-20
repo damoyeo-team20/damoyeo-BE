@@ -12,6 +12,8 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestBody;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -52,5 +54,10 @@ public class UserController {
     @PostMapping("/preferences/chat")
     public PreferenceChatResponse chatPreferences(@Valid @RequestBody PreferenceChatRequest request) {
         return preferenceService.chat(currentUserProvider.getCurrentUserId(), request.message());
+    }
+
+    @DeleteMapping("/preferences/{preferenceId}")
+    public void deletePreference(@PathVariable long preferenceId) {
+        preferenceService.delete(currentUserProvider.getCurrentUserId(), preferenceId);
     }
 }

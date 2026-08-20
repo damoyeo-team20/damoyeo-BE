@@ -1,7 +1,7 @@
 # Damoyeo API 명세서
 
-이 문서는 현재 `main` 브랜치에서 실제 호출 가능한 API를 기준으로 작성한다.
-AI 채팅, 장소 제안, 캘린더 등록 및 알림 API는 아직 구현되지 않았다.
+이 문서는 현재 코드에서 실제 호출 가능한 API를 기준으로 작성한다.
+알림 전송은 아직 구현되지 않았으며 AI·캘린더 연동은 외부 서비스 설정이 필요하다.
 
 ## 1. 공통
 
@@ -179,18 +179,28 @@ GET /api/users/me/preferences
 ```json
 [
   {
+    "id": 31,
     "vocabularyCode": "SPICY_FOOD",
     "displayName": "매운 음식",
     "domain": "FOOD",
     "rawValue": "매운 음식",
     "sentiment": "POSITIVE",
-    "strength": "MODERATE"
+    "strength": "MODERATE",
+    "mappingType": "EXACT"
   }
 ]
 ```
 
-`POST /api/users/me/preferences/chat`은 아직 구현되지 않았다. 온보딩 채팅은 현재
-프론트 mock 또는 건너뛰기로 처리해야 한다.
+미분류 선호는 `vocabularyCode`, `displayName`, `domain`이 `null`이고
+`mappingType`이 `UNMAPPED`인 형태로 함께 반환한다.
+
+### 내 선호 삭제
+
+```http
+DELETE /api/users/me/preferences/{preferenceId}
+```
+
+본인의 선호만 삭제할 수 있다. 성공 시 `204 No Content`다.
 
 ## 4. 그룹
 
@@ -216,12 +226,33 @@ GET /api/groups
       "confirmedStartAt": "2026-07-12T18:00:00Z",
       "region": "건대"
     },
+    "activeMeetings": [
+      {
+        "id": 20,
+        "status": "SURVEYING",
+        "region": "건대",
+        "scheduleSearchFrom": "2026-08-23",
+        "scheduleSearchTo": "2026-09-07",
+        "createdBy": 1
+      }
+    ],
+    "activeMeeting": { "id": 20, "status": "SURVEYING" },
     "createdAt": "2026-08-19T06:00:00Z"
   }
 ]
 ```
 
-지난 확정 일정이 없으면 `lastMeeting`은 `null`이다.
+지난 확정 일정이 없으면 `lastMeeting`은 `null`이다. 진행 중인 일정은
+`activeMeetings`에 최신순으로 모두 반환하며, `activeMeeting`은 기존 프론트 호환용 첫 항목이다.
+
+### 그룹 삭제
+
+```http
+DELETE /api/groups/{groupId}
+```
+
+그룹 `HOST`만 호출할 수 있으며 성공 시 `204 No Content`다. 그룹의 일정과 관련 데이터도
+함께 삭제된다.
 
 ### 그룹 생성
 
@@ -307,14 +338,26 @@ GET /api/groups/{groupId}
       "calendarConnected": false
     }
   ],
+  "activeMeetings": [
+    {
+      "id": 20,
+      "status": "SURVEYING",
+      "purpose": null,
+      "region": "건대",
+      "scheduleSearchFrom": "2026-08-23",
+      "scheduleSearchTo": "2026-09-07",
+      "createdBy": 1,
+      "createdAt": "2026-08-20T08:00:00Z"
+    }
+  ],
   "activeMeeting": { "id": 20, "status": "SURVEYING" },
   "createdAt": "2026-08-19T06:00:00Z"
 }
 ```
 
 - 그룹 멤버만 조회할 수 있다.
-- 진행 일정이 없으면 `activeMeeting`은 `null`이다.
-- 진행 일정이 여러 개면 가장 최근 생성된 하나를 반환한다.
+- 진행 일정이 없으면 `activeMeetings`는 `[]`, `activeMeeting`은 `null`이다.
+- 진행 일정이 여러 개면 `activeMeetings`에 최신순으로 모두 반환한다.
 - `calendarConnected`는 아직 연동 상태를 저장하지 않아 항상 `false`다.
 - 참여자 저장 시 `members[].memberId`를 사용한다.
 
@@ -322,10 +365,12 @@ GET /api/groups/{groupId}
 
 ```http
 GET /api/groups/{groupId}/meetings?timing=UPCOMING
+GET /api/groups/{groupId}/meetings?timing=UPCOMING_ALL
 GET /api/groups/{groupId}/meetings?timing=PAST
 ```
 
 `UPCOMING`은 가장 가까운 미래 확정 일정 하나를 반환한다.
+`UPCOMING_ALL`은 미래 확정 일정을 가까운 순서의 배열로 반환한다. 여러 일정을 표시하는 그룹 상세 화면에서 사용한다.
 
 ```json
 {
@@ -388,6 +433,10 @@ GET /api/meetings/{meetingId}
   "scheduleSearchFrom": "2026-08-23",
   "scheduleSearchTo": "2026-09-07",
   "preferredTimeOfDay": "EVENING",
+  "resolvedStartAt": null,
+  "resolvedEndAt": null,
+  "scheduleResolutionReason": null,
+  "confirmedSuggestion": null,
   "status": "DRAFT",
   "participantMemberIds": [1, 2],
   "participants": [
@@ -406,6 +455,27 @@ GET /api/meetings/{meetingId}
 
 그룹 멤버만 조회할 수 있다. 현재 일정 상세는 모든 참여자의 `selectedDates`를
 포함한다.
+
+확정된 일정은 `confirmedSuggestion`에 확정 장소의 `id`, `name`, `category`,
+`address`, `proposedStartAt`, `proposedEndAt`이 포함된다. 그룹 상세 화면에서 확정
+일정 카드를 눌렀을 때 이 값을 사용해 완료 요약을 복원한다.
+
+### 작성 중인 일정 삭제
+
+```http
+DELETE /api/meetings/{meetingId}
+```
+
+일정 생성자가 `DRAFT` 상태에서만 호출할 수 있다. 성공 시 `204 No Content`다.
+
+### 진행 중인 일정 취소
+
+```http
+POST /api/meetings/{meetingId}/cancel
+```
+
+일정 생성자가 확정 전 일정에 호출할 수 있다. 성공하면 상태가 `CANCELLED`인 전체 일정
+상세를 반환한다. 확정 일정 취소와 Google Calendar 삭제는 후속 범위다.
 
 ### 일정 조건 전체 교체
 
@@ -489,9 +559,9 @@ PUT /api/meetings/{meetingId}/my-availability
 - 일정에 선택된 참여자 본인만 제출할 수 있다.
 - 날짜를 한 개 이상 선택해야 한다.
 - 탐색 범위가 있으면 범위 안의 날짜만 허용한다.
-- 상태가 `SURVEYING`일 때만 제출할 수 있다.
+- 후보 생성 전인 `SURVEYING`, `READY_TO_PLAN` 상태에서 제출하거나 수정할 수 있다.
 - 전원이 제출하면 응답의 `meetingStatus`가 `READY_TO_PLAN`으로 바뀐다.
-- 전원이 제출한 이후에는 수정할 수 없다.
+- 전원이 제출한 후에도 후보 생성 전까지 본인의 날짜를 수정할 수 있다.
 - 이전 경로 `/api/meetings/{meetingId}/availability`와 요청 키 `availableDates`도 호환한다.
 
 ### 내 가능 날짜 조회
@@ -502,6 +572,23 @@ GET /api/meetings/{meetingId}/availability/me
 
 응답은 가능 날짜 제출 응답과 같다. 아직 제출하지 않았다면 `confirmedAt`은 `null`,
 `selectedDates`는 빈 배열이다.
+
+### 내 Google Calendar 바쁜 날짜 조회
+
+```http
+GET /api/meetings/{meetingId}/calendar-busy-dates/me
+```
+
+```json
+{
+  "calendarConnected": true,
+  "busyDates": ["2026-08-25", "2026-08-28"]
+}
+```
+
+일정 참여자 본인만 조회할 수 있다. 일정 제목·장소 등 상세 정보는 읽거나 반환하지 않고,
+그룹장이 정한 `scheduleSearchFrom`부터 `scheduleSearchTo` 범위에서 일정 존재 여부만 날짜 단위로 반환한다.
+권한이 없으면 `calendarConnected=false`, `busyDates=[]`다.
 
 ### 참여자 제출 현황
 
@@ -527,15 +614,26 @@ GET /api/meetings/{meetingId}/coordination
 
 그룹 멤버가 조회할 수 있으며 이 API는 다른 참여자의 상세 날짜를 반환하지 않는다.
 
-### AI 조율 상태 시작
+### 공통 가능 날짜에서 만남 시간 선택
 
 ```http
 POST /api/meetings/{meetingId}/plan
 ```
 
 Request Body 없음. `READY_TO_PLAN` 상태에서 일정 생성자만 호출할 수 있다.
-성공하면 전체 일정 상세 형식으로 `PLANNING` 상태를 반환한다. 실제 AI 호출과
-진행 상태 전달은 아직 구현되지 않았다.
+백엔드는 모든 참여자의 날짜 교집합을 `YYYY-MM-DD` 문자열 배열로만 AI에 전달한다.
+요일 문자열은 전달하지 않는다. AI가 선택한 단일 시간과 이유를 저장하고 전체 일정
+상세에 다음 필드를 포함해 반환한다.
+
+```json
+{
+  "resolvedStartAt": "2026-08-28T10:00:00Z",
+  "resolvedEndAt": "2026-08-28T12:00:00Z",
+  "scheduleResolutionReason": "금요일 저녁이라 한 주를 마무리하며 여유롭게 만나기 좋아 선택했어요."
+}
+```
+
+프론트는 별도 결과 페이지를 두지 않고 모임 요청 채팅 상단에 시간과 선정 이유를 표시한다.
 
 ## 6. 상태 전이
 
@@ -546,7 +644,7 @@ DRAFT  ─────▶  SURVEYING  ─────▶ READY_TO_PLAN ───
 
 - `PROPOSING`, `CONFIRMED`, `FAILED`, `CANCELLED` 값은 정의돼 있지만 전이 API는 없다.
 - 한 그룹에 진행 중 일정이 여러 개 생길 수 있다.
-- 그룹 상세의 `activeMeeting`은 그중 가장 최근 생성된 하나만 반환한다.
+- 그룹 응답의 `activeMeetings`는 진행 중인 일정을 최신순으로 모두 반환한다.
 
 ## 7. 아직 구현되지 않은 API
 
@@ -615,15 +713,16 @@ POST /api/users/me/preferences/chat
 
 ```json
 {
-  "messages": ["매운 음식 좋아해", "조용한 분위기가 좋아"]
+  "message": "매운 음식 좋아해"
 }
 ```
 
 ```json
 {
   "reply": "말씀해주신 내용을 선호에 반영했어요.",
-  "extractedPreferences": [
+  "preferences": [
     {
+      "id": 31,
       "vocabularyCode": "SPICY_FOOD",
       "displayName": "매운 음식",
       "domain": "FOOD",
@@ -638,8 +737,8 @@ POST /api/users/me/preferences/chat
 
 - 로그인한 본인의 선호만 변경할 수 있다.
 - 추출 결과는 `(user_id, vocabulary_code)` 기준 UPSERT한다.
-- `UNMAPPED` 결과는 디버깅 목적으로만 보관하고 일반 선호 목록에는 노출하지 않는다.
-- 빈 `messages`는 `400 INVALID_CHAT_MESSAGES`다.
+- `UNMAPPED` 결과도 원문 보존을 위해 저장하며 Vocabulary 관련 필드는 `null`이다.
+- 빈 `message`는 `400 Bad Request`다.
 - AI 응답 파싱 또는 검증 실패는 `502 AI_RESPONSE_INVALID`다.
 
 ### 모임 목적 채팅
@@ -920,7 +1019,7 @@ AI 후보 결과가 `NO_COMMON_SLOT`, `NO_CANDIDATE`, `CONFLICT`인 경우는 �
 | 그룹 생성 응답 | 멤버에 `status: JOINED` 포함 | `status` 제거, `memberCount`, `pastMeetingCount`, `preferenceCount`, `calendarConnected`, `activeMeeting` 포함 |
 | 중복 그룹 가입 | 충돌 오류 또는 재가입 처리 검토 | `200 OK`, `alreadyMember=true` 반환 |
 | 그룹 멤버 식별자 | 문서에 `groupMemberId`와 `memberId` 혼용 | 그룹 상세은 `memberId`, 가입 응답은 `groupMemberId`; 참여자 요청에는 그룹 상세의 `memberId` 사용 |
-| 그룹 목록 | 기본 그룹 정보만 반환 | `memberCount`, `members`, `lastMeeting` 포함 |
+| 그룹 목록 | 기본 그룹 정보만 반환 | `memberCount`, `members`, `lastMeeting`, `activeMeeting` 포함 |
 | 그룹 상세 | 참여자와 기본 정보 | `pastMeetingCount`, `preferenceCount`, `calendarConnected`, 최신 `activeMeeting` 포함 |
 | 다가오는 일정 | 참여자 배열 포함 | 현재 `participants` 없이 일정 기본 정보만 반환 |
 | 다가오는 일정 없음 | JSON `null` | 현재 `200 OK` 빈 본문 |
@@ -933,10 +1032,10 @@ AI 후보 결과가 `NO_COMMON_SLOT`, `NO_CANDIDATE`, `CONFLICT`인 경우는 �
 | 날짜 탐색 범위 | 선택 가능 | 일정 초안 자체는 비어 있지만 `/conditions` 요청에는 시작일·종료일 모두 필수 |
 | 가능 날짜 API | `/availability`, `availableDates` | `/my-availability`, `selectedDates`; 기존 이름도 호환 |
 | 가능 날짜 저장 | `selected_dates DATE[]` 제안 | `meeting_available_dates` 별도 테이블 사용 |
-| 가능 날짜 수정 | 재제출 가능 여부 불명확 | `SURVEYING` 동안 가능하며, 전원 제출 후에는 수정 불가 |
+| 가능 날짜 수정 | 재제출 가능 여부 불명확 | 후보 생성 전 `SURVEYING`, `READY_TO_PLAN`에서 본인 날짜 수정 가능 |
 | 일정 재제출 | 확인 상태 초기화 후 재제출 가정 | 현재 재제출 및 제출 후 조건 수정 미지원 |
 | 내 선호 조회 | 계약만 존재 | `GET /api/users/me/preferences` 구현 완료 |
-| 선호 채팅 | 구현된 API로 표기 | 미구현, 호출 시 `404` |
+| 선호 채팅 | 구현된 API로 표기 | `{message}`를 받아 AI 추출 후 UPSERT 또는 `UNMAPPED` 원문 저장 |
 | 모임 context-chat | 구현된 API로 표기 | 미구현, 호출 시 `404` |
 | AI 조율 | `/plan`에서 AI 실행 | 현재 `/plan`은 `PLANNING` 상태 전환만 수행 |
 | 제안·확정·캘린더·알림 | 추후 구현 예정 | 현재 모두 미구현 |

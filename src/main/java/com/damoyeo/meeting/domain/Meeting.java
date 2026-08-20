@@ -65,6 +65,9 @@ public class Meeting extends BaseEntity {
     @Column(name = "resolved_end_at")
     private Instant resolvedEndAt;
 
+    @Column(name = "schedule_resolution_reason", length = 1000)
+    private String scheduleResolutionReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "confirmed_suggestion_id")
     private MeetingSuggestion confirmedSuggestion;
@@ -123,9 +126,16 @@ public class Meeting extends BaseEntity {
     }
 
     public void ensureCollectingAvailability() {
-        if (status != MeetingStatus.SURVEYING) {
+        if (status != MeetingStatus.SURVEYING && status != MeetingStatus.READY_TO_PLAN) {
             throw new BusinessException("AVAILABILITY_NOT_COLLECTING", "가능 날짜를 제출할 수 없는 상태입니다.", HttpStatus.CONFLICT);
         }
+    }
+
+    public void cancel() {
+        if (status == MeetingStatus.CONFIRMED || status == MeetingStatus.CANCELLED) {
+            throw new BusinessException("MEETING_NOT_CANCELLABLE", "현재 상태의 일정은 취소할 수 없습니다.", HttpStatus.CONFLICT);
+        }
+        status = MeetingStatus.CANCELLED;
     }
 
     public void startPlanning() {
@@ -135,7 +145,7 @@ public class Meeting extends BaseEntity {
         status = MeetingStatus.PLANNING;
     }
 
-    public void resolveSchedule(Instant startAt, Instant endAt) {
+    public void resolveSchedule(Instant startAt, Instant endAt, String reason) {
         if (status != MeetingStatus.READY_TO_PLAN) {
             throw new BusinessException("MEETING_NOT_READY", "가능 날짜 제출 완료 후 만남 일시를 정할 수 있습니다.", HttpStatus.CONFLICT);
         }
@@ -144,6 +154,7 @@ public class Meeting extends BaseEntity {
         }
         this.resolvedStartAt = startAt;
         this.resolvedEndAt = endAt;
+        this.scheduleResolutionReason = trimToNull(reason);
     }
 
     public void reopenForRegeneration() {
@@ -260,6 +271,8 @@ public class Meeting extends BaseEntity {
     public Instant getResolvedStartAt() { return resolvedStartAt; }
 
     public Instant getResolvedEndAt() { return resolvedEndAt; }
+
+    public String getScheduleResolutionReason() { return scheduleResolutionReason; }
 
     public MeetingSuggestion getConfirmedSuggestion() { return confirmedSuggestion; }
 }

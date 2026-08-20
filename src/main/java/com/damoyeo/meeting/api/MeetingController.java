@@ -10,6 +10,7 @@ import com.damoyeo.meeting.dto.UpdateParticipantsRequest;
 import com.damoyeo.meeting.dto.SubmitAvailabilityRequest;
 import com.damoyeo.meeting.dto.AvailabilityResponse;
 import com.damoyeo.meeting.dto.CoordinationStatusResponse;
+import com.damoyeo.meeting.dto.CalendarBusyDatesResponse;
 import com.damoyeo.meeting.dto.ConfirmMeetingRequest;
 import com.damoyeo.meeting.dto.MeetingChatRequest;
 import com.damoyeo.meeting.dto.MeetingChatResponse;
@@ -19,6 +20,7 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -108,6 +110,17 @@ public class MeetingController {
         return meetingService.confirm(currentUserProvider.getCurrentUserId(), meetingId, request.suggestionId());
     }
 
+    @DeleteMapping("/meetings/{meetingId}")
+    public ResponseEntity<Void> deleteDraft(@PathVariable long meetingId) {
+        meetingService.deleteDraft(currentUserProvider.getCurrentUserId(), meetingId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/meetings/{meetingId}/cancel")
+    public MeetingResponse cancel(@PathVariable long meetingId) {
+        return meetingService.cancel(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
     @GetMapping("/meetings/{meetingId}/suggestions")
     public Object findSuggestions(@PathVariable long meetingId) {
         return meetingService.findSuggestions(currentUserProvider.getCurrentUserId(), meetingId);
@@ -143,6 +156,11 @@ public class MeetingController {
     @GetMapping("/meetings/{meetingId}/availability/me")
     public AvailabilityResponse findMyAvailability(@PathVariable long meetingId) {
         return availabilityService.findMine(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @GetMapping("/meetings/{meetingId}/calendar-busy-dates/me")
+    public CalendarBusyDatesResponse findMyCalendarBusyDates(@PathVariable long meetingId) {
+        return availabilityService.findMyCalendarBusyDates(currentUserProvider.getCurrentUserId(), meetingId);
     }
 
     @GetMapping("/meetings/{meetingId}/coordination")

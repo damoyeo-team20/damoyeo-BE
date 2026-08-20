@@ -47,6 +47,17 @@ public class UserPreferenceService {
     public UserPreference upsert(long userId, PreferenceUpsertCommand command) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+        if (command.mappingType() == PreferenceMappingType.UNMAPPED) {
+            return preferenceRepository.save(new UserPreference(
+                    user,
+                    null,
+                    command.rawValue(),
+                    command.sentiment(),
+                    command.strength(),
+                    command.mappingType(),
+                    command.sourceText()
+            ));
+        }
         PreferenceVocabulary vocabulary = vocabularyRepository.findByCode(command.vocabularyCode())
                 .orElseThrow(() -> new BusinessException(
                         "VOCABULARY_NOT_FOUND",
@@ -84,6 +95,16 @@ public class UserPreferenceService {
     }
 
     @Transactional
+    public void delete(long userId, long preferenceId) {
+        UserPreference preference = preferenceRepository.findById(preferenceId)
+                .orElseThrow(() -> new BusinessException("PREFERENCE_NOT_FOUND", "선호를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+        if (!preference.getUser().getId().equals(userId)) {
+            throw new BusinessException("PREFERENCE_NOT_FOUND", "선호를 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
+        }
+        preferenceRepository.delete(preference);
+    }
+
+    @Transactional
     public PreferenceChatResponse chat(long userId, String message) {
         String sourceText = message.trim();
         AiClient.PreferenceExtractResponse response = aiClient.extractPreferences(List.of(sourceText));
@@ -97,9 +118,6 @@ public class UserPreferenceService {
                         .map(value -> value.mappingType() + ":" + value.vocabularyCode())
                         .toList());
         for (AiClient.ExtractedPreference extracted : response.extractedPreferences()) {
-            if (PreferenceMappingType.UNMAPPED.name().equals(extracted.mappingType())) {
-                continue;
-            }
             validateExtractedPreference(extracted);
             upsert(userId, new PreferenceUpsertCommand(
                     extracted.vocabularyCode(), extracted.rawValue(),
@@ -113,13 +131,16 @@ public class UserPreferenceService {
 
     private void validateExtractedPreference(AiClient.ExtractedPreference extracted) {
         try {
-            if (extracted.vocabularyCode() == null || extracted.rawValue() == null || extracted.rawValue().isBlank()
-                    || extracted.rawValue().length() > 255) {
+            if (extracted.rawValue() == null || extracted.rawValue().isBlank() || extracted.rawValue().length() > 255) {
                 throw new IllegalArgumentException();
             }
             PreferenceSentiment.valueOf(extracted.sentiment());
             PreferenceStrength.valueOf(extracted.strength());
-            if (PreferenceMappingType.valueOf(extracted.mappingType()) == PreferenceMappingType.UNMAPPED) {
+            PreferenceMappingType mappingType = PreferenceMappingType.valueOf(extracted.mappingType());
+            if (mappingType == PreferenceMappingType.UNMAPPED && extracted.vocabularyCode() != null) {
+                throw new IllegalArgumentException();
+            }
+            if (mappingType != PreferenceMappingType.UNMAPPED && extracted.vocabularyCode() == null) {
                 throw new IllegalArgumentException();
             }
         } catch (RuntimeException exception) {

@@ -21,6 +21,8 @@ public record MeetingResponse(
         PreferredTimeOfDay preferredTimeOfDay,
         Instant resolvedStartAt,
         Instant resolvedEndAt,
+        String scheduleResolutionReason,
+        ConfirmedSuggestionResponse confirmedSuggestion,
         MeetingStatus status,
         List<Long> participantMemberIds,
         List<ParticipantResponse> participants,
@@ -44,6 +46,15 @@ public record MeetingResponse(
                 meeting.getPreferredTimeOfDay(),
                 meeting.getResolvedStartAt(),
                 meeting.getResolvedEndAt(),
+                meeting.getScheduleResolutionReason(),
+                meeting.getConfirmedSuggestion() == null ? null : new ConfirmedSuggestionResponse(
+                        meeting.getConfirmedSuggestion().getId(),
+                        meeting.getConfirmedSuggestion().getName(),
+                        meeting.getConfirmedSuggestion().getCategory(),
+                        meeting.getConfirmedSuggestion().getAddress(),
+                        meeting.getConfirmedSuggestion().getProposedStartAt(),
+                        meeting.getConfirmedSuggestion().getProposedEndAt()
+                ),
                 meeting.getStatus(),
                 participants.stream().map(participant -> participant.getGroupMember().getId()).toList(),
                 participants.stream().map(participant -> {
@@ -67,6 +78,16 @@ public record MeetingResponse(
             String nickname,
             Instant confirmedAt,
             List<LocalDate> selectedDates
+    ) {
+    }
+
+    public record ConfirmedSuggestionResponse(
+            Long id,
+            String name,
+            String category,
+            String address,
+            Instant proposedStartAt,
+            Instant proposedEndAt
     ) {
     }
 }

@@ -33,8 +33,8 @@ public class UserPreference extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "vocabulary_code", referencedColumnName = "code", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vocabulary_code", referencedColumnName = "code")
     private PreferenceVocabulary vocabulary;
 
     @Column(name = "raw_value", nullable = false, length = 255)

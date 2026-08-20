@@ -178,6 +178,14 @@ public class MeetingService {
     public Object findByGroup(long userId, long groupId, String timing) {
         groupService.requireJoinedMember(userId, groupId);
         List<Meeting> meetings = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(groupId);
+        if ("UPCOMING_ALL".equalsIgnoreCase(timing)) {
+            return meetings.stream()
+                    .filter(meeting -> meeting.getStatus() == com.damoyeo.meeting.domain.MeetingStatus.CONFIRMED)
+                    .filter(meeting -> meeting.getConfirmedStartAt() != null && meeting.getConfirmedStartAt().isAfter(java.time.Instant.now()))
+                    .sorted(java.util.Comparator.comparing(Meeting::getConfirmedStartAt))
+                    .map(MeetingListItemResponse::from)
+                    .toList();
+        }
         if ("UPCOMING".equalsIgnoreCase(timing)) {
             return meetings.stream()
                     .filter(meeting -> meeting.getStatus() == com.damoyeo.meeting.domain.MeetingStatus.CONFIRMED)
@@ -245,7 +253,7 @@ public class MeetingService {
                         meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId()
                 ));
         validateScheduleResolution(response, commonDates);
-        meeting.resolveSchedule(response.resolvedStartAt(), response.resolvedEndAt());
+        meeting.resolveSchedule(response.resolvedStartAt(), response.resolvedEndAt(), response.reason());
         return toResponse(meeting);
     }
 
@@ -286,6 +294,7 @@ public class MeetingService {
 
     private void validateScheduleResolution(AiClient.ScheduleResolutionResponse response, Set<LocalDate> commonDates) {
         if (response == null || response.resolvedStartAt() == null || response.resolvedEndAt() == null
+                || response.reason() == null || response.reason().isBlank() || response.reason().length() > 1000
                 || !response.resolvedEndAt().isAfter(response.resolvedStartAt())
                 || !java.time.Duration.between(response.resolvedStartAt(), response.resolvedEndAt())
                 .equals(java.time.Duration.ofMinutes(120))
@@ -333,6 +342,22 @@ public class MeetingService {
     }
 
     @Transactional
+    public void deleteDraft(long userId, long meetingId) {
+        Meeting meeting = requireEditableMeeting(userId, meetingId);
+        if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.DRAFT) {
+            throw new BusinessException("MEETING_NOT_DRAFT", "작성 중인 일정만 삭제할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+        meetingRepository.delete(meeting);
+    }
+
+    @Transactional
+    public MeetingResponse cancel(long userId, long meetingId) {
+        Meeting meeting = requireEditableMeeting(userId, meetingId);
+        meeting.cancel();
+        return toResponse(meeting);
+    }
+
+    @Transactional
     public MeetingChatResponse chat(long userId, long meetingId, String message) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.READY_TO_PLAN) {
@@ -364,6 +389,7 @@ public class MeetingService {
                     long participantUserId = participant.getGroupMember().getUserId();
                     List<AiClient.CandidatePreference> preferences = preferenceRepository
                             .findAllByUserIdOrderByIdAsc(participantUserId).stream()
+                            .filter(preference -> preference.getVocabulary() != null)
                             .map(preference -> new AiClient.CandidatePreference(
                                     preference.getVocabulary().getCode(), preference.getSentiment().name(),
                                     preference.getStrength().name(), preference.getRawValue()
