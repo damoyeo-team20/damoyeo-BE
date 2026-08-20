@@ -194,6 +194,7 @@ public class MeetingService {
     @Transactional
     public MeetingResponse startPlanning(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
+        ensureCommonAvailableDate(meeting);
         meeting.startPlanning();
         String requestId = UUID.randomUUID().toString();
         AiClient.CandidateResponse response = aiClient.generateCandidates(meetingId, candidateRequest(meeting, requestId));
@@ -205,6 +206,36 @@ public class MeetingService {
             meeting.restoreReadyToPlan();
         }
         return toResponse(meeting);
+    }
+
+    private void ensureCommonAvailableDate(Meeting meeting) {
+        List<MeetingParticipant> participants = participantRepository.findAllByMeetingIdOrderByIdAsc(meeting.getId());
+        Set<LocalDate> commonDates = null;
+        for (MeetingParticipant participant : participants) {
+            Set<LocalDate> selectedDates = availableDateRepository
+                    .findAllByMeetingParticipantIdOrderByAvailableDateAsc(participant.getId()).stream()
+                    .map(value -> value.getAvailableDate())
+                    .collect(Collectors.toSet());
+            if (commonDates == null) {
+                commonDates = new LinkedHashSet<>(selectedDates);
+            } else {
+                commonDates.retainAll(selectedDates);
+            }
+            if (commonDates.isEmpty()) {
+                throw new BusinessException(
+                        "NO_COMMON_SLOT",
+                        "참여자 모두가 가능한 날짜가 없습니다. 날짜 범위를 조정하거나 다시 선택해 주세요.",
+                        HttpStatus.CONFLICT
+                );
+            }
+        }
+        if (commonDates == null || commonDates.isEmpty()) {
+            throw new BusinessException(
+                    "NO_COMMON_SLOT",
+                    "참여자 모두가 가능한 날짜가 없습니다. 날짜 범위를 조정하거나 다시 선택해 주세요.",
+                    HttpStatus.CONFLICT
+            );
+        }
     }
 
     @Transactional
