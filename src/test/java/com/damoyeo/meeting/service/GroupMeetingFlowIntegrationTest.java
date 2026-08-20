@@ -1,7 +1,11 @@
 package com.damoyeo.meeting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
+import com.damoyeo.ai.AiClient;
 import com.damoyeo.group.dto.CreateGroupRequest;
 import com.damoyeo.group.dto.GroupDetailResponse;
 import com.damoyeo.group.service.GroupService;
@@ -20,14 +24,19 @@ import com.damoyeo.user.repository.UserRepository;
 import java.time.LocalDate;
 import java.util.Set;
 import java.util.Map;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest
 @Transactional
 class GroupMeetingFlowIntegrationTest {
+
+    @MockitoBean
+    private AiClient aiClient;
 
     @Autowired
     private GroupService groupService;
@@ -79,11 +88,20 @@ class GroupMeetingFlowIntegrationTest {
                 draft.id(),
                 Set.of(LocalDate.of(2026, 8, 23))
         );
+        when(aiClient.generateCandidates(anyLong(), any(AiClient.CandidateRequest.class))).thenAnswer(invocation -> {
+            AiClient.CandidateRequest request = invocation.getArgument(1);
+            return new AiClient.CandidateResponse(
+                    request.requestId(), "OK", 120, "요약", List.of(new AiClient.CandidateSuggestion(
+                    1, "한식", "KAKAO", "place-1", "테스트 식당", "서울", 37.0, 127.0,
+                    null, "2026-08-23T18:00:00+09:00", "2026-08-23T20:00:00+09:00", null,
+                    false, null, List.of(), List.of("사유"), List.of("https://example.com"), "2026-08-20T00:00:00Z"
+            )), null, false);
+        });
         MeetingResponse planning = meetingService.startPlanning(userId, draft.id());
 
         assertThat(submitted.status()).isEqualTo(MeetingStatus.SURVEYING);
         assertThat(availability.meetingStatus()).isEqualTo(MeetingStatus.READY_TO_PLAN);
-        assertThat(planning.status()).isEqualTo(MeetingStatus.PLANNING);
+        assertThat(planning.status()).isEqualTo(MeetingStatus.PROPOSING);
         assertThat(planning.participantMemberIds()).containsExactly(group.members().getFirst().memberId());
     }
 

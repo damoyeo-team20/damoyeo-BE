@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.client.web.DefaultOAuth2Authorization
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -35,6 +36,7 @@ public class OAuthSecurityConfig {
 		HttpSecurity http,
 		ClientRegistrationRepository clientRegistrationRepository,
 		GoogleOidcUserService googleOidcUserService,
+		InternalApiKeyFilter internalApiKeyFilter,
 		@Value("${spring.security.oauth2.client.registration.google.redirect-uri}") String googleRedirectUri,
 		@Value("${app.oauth.login-success-uri}") String loginSuccessUri
 	) throws Exception {
@@ -60,6 +62,7 @@ public class OAuthSecurityConfig {
 					"/error",
 					"/actuator/health",
 					"/actuator/info",
+					"/internal/**",
 					"/api/auth/google",
 					"/api/auth/session",
 					"/api/auth/csrf",
@@ -78,6 +81,7 @@ public class OAuthSecurityConfig {
 				.defaultSuccessUrl(loginSuccessUri, true)
 				.failureUrl("/api/auth/session?oauthError=true")
 			)
+			.addFilterBefore(internalApiKeyFilter, UsernamePasswordAuthenticationFilter.class)
 			.oauth2Client(Customizer.withDefaults())
 			.exceptionHandling(exceptions -> exceptions
 				.defaultAuthenticationEntryPointFor(

@@ -7,10 +7,12 @@ import com.damoyeo.preference.dto.UserPreferenceCount;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 
 public interface UserPreferenceRepository extends JpaRepository<UserPreference, Long> {
     Optional<UserPreference> findByUserIdAndVocabularyCode(Long userId, String vocabularyCode);
 
+    @EntityGraph(attributePaths = "vocabulary")
     List<UserPreference> findAllByUserIdOrderByIdAsc(Long userId);
 
     @Query("""

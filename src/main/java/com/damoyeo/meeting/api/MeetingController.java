@@ -10,6 +10,10 @@ import com.damoyeo.meeting.dto.UpdateParticipantsRequest;
 import com.damoyeo.meeting.dto.SubmitAvailabilityRequest;
 import com.damoyeo.meeting.dto.AvailabilityResponse;
 import com.damoyeo.meeting.dto.CoordinationStatusResponse;
+import com.damoyeo.meeting.dto.ContextChatRequest;
+import com.damoyeo.meeting.dto.ContextChatResponse;
+import com.damoyeo.meeting.dto.RevisionChatRequest;
+import com.damoyeo.meeting.dto.RevisionChatResponse;
 import com.damoyeo.meeting.service.MeetingAvailabilityService;
 import com.damoyeo.meeting.service.MeetingService;
 import jakarta.validation.Valid;
@@ -88,6 +92,27 @@ public class MeetingController {
     @PostMapping("/meetings/{meetingId}/plan")
     public MeetingResponse startPlanning(@PathVariable long meetingId) {
         return meetingService.startPlanning(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @GetMapping("/meetings/{meetingId}/suggestions")
+    public Object findSuggestions(@PathVariable long meetingId) {
+        return meetingService.findSuggestions(currentUserProvider.getCurrentUserId(), meetingId);
+    }
+
+    @PostMapping("/meetings/{meetingId}/context-chat")
+    public ContextChatResponse chatContext(
+            @PathVariable long meetingId,
+            @Valid @RequestBody ContextChatRequest request
+    ) {
+        return meetingService.chatContext(currentUserProvider.getCurrentUserId(), meetingId, request.message());
+    }
+
+    @PostMapping("/meetings/{meetingId}/revision/chat")
+    public RevisionChatResponse chatRevision(
+            @PathVariable long meetingId,
+            @Valid @RequestBody RevisionChatRequest request
+    ) {
+        return meetingService.chatRevision(currentUserProvider.getCurrentUserId(), meetingId, request.message());
     }
 
     @PutMapping({"/meetings/{meetingId}/my-availability", "/meetings/{meetingId}/availability"})

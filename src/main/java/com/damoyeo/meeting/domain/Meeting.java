@@ -90,9 +90,14 @@ public class Meeting extends BaseEntity {
         if (purpose == null || region == null) {
             throw new BusinessException("INCOMPLETE_MEETING", "모임 목적과 지역을 입력해야 합니다.", HttpStatus.BAD_REQUEST);
         }
-        if ((scheduleSearchFrom == null) != (scheduleSearchTo == null)
-                || (scheduleSearchFrom != null && scheduleSearchFrom.isAfter(scheduleSearchTo))) {
+        if (scheduleSearchFrom == null || scheduleSearchTo == null) {
+            throw new BusinessException("SEARCH_PERIOD_REQUIRED", "일정 탐색 시작일과 종료일을 입력해야 합니다.", HttpStatus.BAD_REQUEST);
+        }
+        if (scheduleSearchFrom.isAfter(scheduleSearchTo)) {
             throw new BusinessException("INVALID_SEARCH_PERIOD", "일정 탐색 시작일은 종료일보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+        if (preferredTimeOfDay == null) {
+            throw new BusinessException("PREFERRED_TIME_REQUIRED", "희망 시간대를 선택해야 합니다.", HttpStatus.BAD_REQUEST);
         }
         if (!hasParticipants) {
             throw new BusinessException("PARTICIPANT_REQUIRED", "참여자를 한 명 이상 선택해야 합니다.", HttpStatus.BAD_REQUEST);
@@ -118,6 +123,28 @@ public class Meeting extends BaseEntity {
             throw new BusinessException("MEETING_NOT_READY", "조율을 시작할 수 없는 상태입니다.", HttpStatus.CONFLICT);
         }
         status = MeetingStatus.PLANNING;
+    }
+
+    public void applyAiPurpose(String purpose) {
+        requireDraft();
+        if (purpose == null || purpose.isBlank() || purpose.length() > 1000) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        this.purpose = purpose.trim();
+    }
+
+    public void completePlanning() {
+        if (status != MeetingStatus.PLANNING) {
+            throw new BusinessException("MEETING_NOT_PLANNING", "조율 중인 일정이 아닙니다.", HttpStatus.CONFLICT);
+        }
+        status = MeetingStatus.PROPOSING;
+    }
+
+    public void restoreReadyToPlan() {
+        if (status != MeetingStatus.PLANNING) {
+            throw new BusinessException("MEETING_NOT_PLANNING", "조율 중인 일정이 아닙니다.", HttpStatus.CONFLICT);
+        }
+        status = MeetingStatus.READY_TO_PLAN;
     }
 
     public void ensureEditable() {

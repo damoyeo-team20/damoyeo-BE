@@ -1,17 +1,27 @@
 package com.damoyeo.meeting.service;
 
+import com.damoyeo.ai.AiClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.damoyeo.common.exception.BusinessException;
 import com.damoyeo.group.domain.GroupMember;
 import com.damoyeo.group.repository.GroupMemberRepository;
 import com.damoyeo.group.service.GroupService;
 import com.damoyeo.meeting.domain.Meeting;
 import com.damoyeo.meeting.domain.MeetingParticipant;
+import com.damoyeo.meeting.domain.MeetingChatMessage;
+import com.damoyeo.meeting.domain.ChatRole;
+import com.damoyeo.meeting.domain.MeetingMemory;
+import com.damoyeo.meeting.dto.ContextChatResponse;
+import com.damoyeo.meeting.dto.RevisionChatResponse;
 import com.damoyeo.meeting.dto.MeetingResponse;
 import com.damoyeo.meeting.dto.MeetingListItemResponse;
 import com.damoyeo.meeting.dto.UpdateMeetingRequest;
 import com.damoyeo.meeting.repository.MeetingParticipantRepository;
 import com.damoyeo.meeting.repository.MeetingRepository;
 import com.damoyeo.meeting.repository.MeetingAvailableDateRepository;
+import com.damoyeo.meeting.repository.MeetingChatMessageRepository;
+import com.damoyeo.meeting.repository.MeetingMemoryRepository;
+import com.damoyeo.preference.repository.UserPreferenceRepository;
 import com.damoyeo.user.repository.UserRepository;
 import com.damoyeo.user.domain.User;
 import java.util.Map;
@@ -22,6 +32,8 @@ import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.LinkedHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +50,11 @@ public class MeetingService {
     private final GroupService groupService;
     private final MeetingAvailableDateRepository availableDateRepository;
     private final UserRepository userRepository;
+    private final MeetingChatMessageRepository chatMessageRepository;
+    private final AiClient aiClient;
+    private final UserPreferenceRepository preferenceRepository;
+    private final MeetingMemoryRepository memoryRepository;
+    private final ObjectMapper objectMapper;
 
     public MeetingService(
             MeetingRepository meetingRepository,
@@ -45,7 +62,12 @@ public class MeetingService {
             GroupMemberRepository memberRepository,
             GroupService groupService,
             MeetingAvailableDateRepository availableDateRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            MeetingChatMessageRepository chatMessageRepository,
+            AiClient aiClient,
+            UserPreferenceRepository preferenceRepository,
+            MeetingMemoryRepository memoryRepository,
+            ObjectMapper objectMapper
     ) {
         this.meetingRepository = meetingRepository;
         this.participantRepository = participantRepository;
@@ -53,6 +75,11 @@ public class MeetingService {
         this.groupService = groupService;
         this.availableDateRepository = availableDateRepository;
         this.userRepository = userRepository;
+        this.chatMessageRepository = chatMessageRepository;
+        this.aiClient = aiClient;
+        this.preferenceRepository = preferenceRepository;
+        this.memoryRepository = memoryRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -105,6 +132,14 @@ public class MeetingService {
         return toResponse(requireAccessibleMeeting(userId, meetingId));
     }
 
+    public Object findSuggestions(long userId, long meetingId) {
+        requireAccessibleMeeting(userId, meetingId);
+        return memoryRepository.findById(meetingId)
+                .map(MeetingMemory::getMemory)
+                .map(memory -> memory.get("candidateResult"))
+                .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "생성된 제안을 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+    }
+
     public Object findByGroup(long userId, long groupId, String timing) {
         groupService.requireJoinedMember(userId, groupId);
         List<Meeting> meetings = meetingRepository.findAllByGroupIdOrderByCreatedAtDesc(groupId);
@@ -138,7 +173,131 @@ public class MeetingService {
     public MeetingResponse startPlanning(long userId, long meetingId) {
         Meeting meeting = requireEditableMeeting(userId, meetingId);
         meeting.startPlanning();
+        String requestId = UUID.randomUUID().toString();
+        AiClient.CandidateResponse response = aiClient.generateCandidates(meetingId, candidateRequest(meeting, requestId));
+        validateCandidateResponse(response, requestId);
+        storeCandidateResult(meeting, response);
+        if ("OK".equals(response.status())) {
+            meeting.completePlanning();
+        } else {
+            meeting.restoreReadyToPlan();
+        }
         return toResponse(meeting);
+    }
+
+    @Transactional
+    public ContextChatResponse chatContext(long userId, long meetingId, String message) {
+        Meeting meeting = requireEditableMeeting(userId, meetingId);
+        String userMessage = message.trim();
+        AiClient.MeetingContextResponse response = aiClient.summarizeContext(
+                meetingId, List.of(userMessage), meeting.getPurpose()
+        );
+        if (response.reply() == null || response.reply().isBlank()
+                || response.purpose() == null || response.purpose().isBlank() || response.purpose().length() > 1000) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        meeting.applyAiPurpose(response.purpose());
+        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.USER, userMessage));
+        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, response.reply()));
+        return new ContextChatResponse(response.reply(), response.purpose());
+    }
+
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public RevisionChatResponse chatRevision(long userId, long meetingId, String message) {
+        Meeting meeting = requireAccessibleMeeting(userId, meetingId);
+        if (!meeting.getCreatedBy().equals(userId)) {
+            throw new BusinessException("MEETING_EDIT_FORBIDDEN", "일정을 만든 사용자만 재생성을 요청할 수 있습니다.", HttpStatus.FORBIDDEN);
+        }
+        if (meeting.getStatus() != com.damoyeo.meeting.domain.MeetingStatus.PROPOSING) {
+            throw new BusinessException("MEETING_NOT_PROPOSING", "제안이 생성된 일정만 재생성할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+        Map<String, Object> memory = new LinkedHashMap<>(memoryRepository.findById(meetingId)
+                .map(MeetingMemory::getMemory)
+                .orElseThrow(() -> new BusinessException("SUGGESTION_NOT_FOUND", "생성된 제안을 찾을 수 없습니다.", HttpStatus.NOT_FOUND)));
+        Map<String, Object> candidateResult = (Map<String, Object>) memory.get("candidateResult");
+        if (candidateResult == null || !(candidateResult.get("suggestions") instanceof List<?> rawSuggestions)) {
+            throw new BusinessException("SUGGESTION_NOT_FOUND", "생성된 제안을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
+        }
+        List<AiClient.CurrentSuggestion> suggestions = rawSuggestions.stream().map(raw -> {
+            Map<String, Object> value = (Map<String, Object>) raw;
+            return new AiClient.CurrentSuggestion(
+                    ((Number) value.get("rank")).intValue(), (String) value.get("externalPlaceId"),
+                    (String) value.get("name"), (String) value.get("category"),
+                    (String) value.get("proposedStartAt"), (String) value.get("proposedEndAt"),
+                    (List<String>) value.get("reasons")
+            );
+        }).toList();
+        Map<String, Object> priorDraft = memory.get("revisionDraft") instanceof Map<?, ?> value
+                ? (Map<String, Object>) value : Map.of();
+        String draftPurpose = (String) priorDraft.getOrDefault("draftPurpose", meeting.getPurpose());
+        List<String> excluded = (List<String>) priorDraft.getOrDefault("excludedExternalPlaceIds", List.of());
+        AiClient.RevisionResponse response = aiClient.revise(meetingId,
+                new AiClient.RevisionRequest(List.of(message.trim()), draftPurpose, suggestions, excluded));
+        if (response.reply() == null || response.reply().isBlank() || response.draftPurpose() == null
+                || response.draftPurpose().isBlank() || response.draftPurpose().length() > 1000
+                || response.excludedExternalPlaceIds() == null || response.uiChangeRequests() == null) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        List<RevisionChatResponse.UiChangeRequest> changes = response.uiChangeRequests().stream()
+                .map(value -> new RevisionChatResponse.UiChangeRequest(value.field(), value.mentionedValue(), value.question()))
+                .toList();
+        memory.put("revisionDraft", Map.of(
+                "draftPurpose", response.draftPurpose(),
+                "excludedExternalPlaceIds", response.excludedExternalPlaceIds(),
+                "uiChangeRequests", changes
+        ));
+        memoryRepository.findById(meetingId).orElseThrow().update(memory);
+        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.USER, message.trim()));
+        chatMessageRepository.save(new MeetingChatMessage(meeting, ChatRole.ASSISTANT, response.reply()));
+        return new RevisionChatResponse(response.reply(), response.draftPurpose(), response.excludedExternalPlaceIds(), changes);
+    }
+
+    private AiClient.CandidateRequest candidateRequest(Meeting meeting, String requestId) {
+        List<AiClient.CandidateParticipant> participants = participantRepository.findAllByMeetingIdOrderByIdAsc(meeting.getId())
+                .stream()
+                .map(participant -> {
+                    long participantUserId = participant.getGroupMember().getUserId();
+                    List<String> dates = availableDateRepository
+                            .findAllByMeetingParticipantIdOrderByAvailableDateAsc(participant.getId()).stream()
+                            .map(date -> date.getAvailableDate().toString())
+                            .toList();
+                    List<AiClient.CandidatePreference> preferences = preferenceRepository
+                            .findAllByUserIdOrderByIdAsc(participantUserId).stream()
+                            .map(preference -> new AiClient.CandidatePreference(
+                                    preference.getVocabulary().getCode(), preference.getSentiment().name(),
+                                    preference.getStrength().name(), preference.getRawValue()
+                            )).toList();
+                    return new AiClient.CandidateParticipant(participantUserId, dates, preferences);
+                }).toList();
+        Object memory = memoryRepository.findById(meeting.getId()).map(MeetingMemory::getMemory).orElse(null);
+        return new AiClient.CandidateRequest(
+                "1.0", requestId,
+                new AiClient.CandidateMeeting(meeting.getId(), meeting.getPurpose(), meeting.getRegion(),
+                        meeting.getScheduleSearchFrom().toString(), meeting.getScheduleSearchTo().toString(),
+                        meeting.getPreferredTimeOfDay().name(), 120, SERVICE_ZONE.getId()),
+                participants, memory, List.of()
+        );
+    }
+
+    private void validateCandidateResponse(AiClient.CandidateResponse response, String requestId) {
+        if (response == null || !requestId.equals(response.requestId()) || response.status() == null
+                || response.suggestions() == null || response.verificationTimedOut() == null
+                || !(response.status().equals("OK") || response.status().equals("NO_COMMON_SLOT")
+                || response.status().equals("NO_CANDIDATE") || response.status().equals("CONFLICT"))) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+        if (response.status().equals("OK") && (response.suggestions().isEmpty() || response.suggestions().size() > 3)) {
+            throw new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
+        }
+    }
+
+    private void storeCandidateResult(Meeting meeting, AiClient.CandidateResponse response) {
+        Map<String, Object> memory = new LinkedHashMap<>(memoryRepository.findById(meeting.getId())
+                .map(MeetingMemory::getMemory).orElse(Map.of()));
+        memory.put("candidateResult", objectMapper.convertValue(response, Map.class));
+        memoryRepository.findById(meeting.getId())
+                .ifPresentOrElse(value -> value.update(memory), () -> memoryRepository.save(new MeetingMemory(meeting, memory)));
     }
 
     private Meeting requireAccessibleMeeting(long userId, long meetingId) {

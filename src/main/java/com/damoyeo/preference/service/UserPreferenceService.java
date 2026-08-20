@@ -1,10 +1,16 @@
 package com.damoyeo.preference.service;
 
+import com.damoyeo.ai.AiClient;
 import com.damoyeo.common.exception.BusinessException;
 import com.damoyeo.preference.domain.PreferenceVocabulary;
 import com.damoyeo.preference.domain.UserPreference;
 import com.damoyeo.preference.repository.PreferenceVocabularyRepository;
 import com.damoyeo.preference.repository.UserPreferenceRepository;
+import com.damoyeo.preference.dto.PreferenceChatResponse;
+import com.damoyeo.preference.dto.UserPreferenceResponse;
+import com.damoyeo.preference.domain.PreferenceMappingType;
+import com.damoyeo.preference.domain.PreferenceSentiment;
+import com.damoyeo.preference.domain.PreferenceStrength;
 import com.damoyeo.user.domain.User;
 import com.damoyeo.user.repository.UserRepository;
 import java.util.List;
@@ -19,15 +25,18 @@ public class UserPreferenceService {
     private final UserRepository userRepository;
     private final PreferenceVocabularyRepository vocabularyRepository;
     private final UserPreferenceRepository preferenceRepository;
+    private final AiClient aiClient;
 
     public UserPreferenceService(
             UserRepository userRepository,
             PreferenceVocabularyRepository vocabularyRepository,
-            UserPreferenceRepository preferenceRepository
+            UserPreferenceRepository preferenceRepository,
+            AiClient aiClient
     ) {
         this.userRepository = userRepository;
         this.vocabularyRepository = vocabularyRepository;
         this.preferenceRepository = preferenceRepository;
+        this.aiClient = aiClient;
     }
 
     @Transactional
@@ -68,5 +77,47 @@ public class UserPreferenceService {
             throw new BusinessException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
         }
         return preferenceRepository.findAllByUserIdOrderByIdAsc(userId);
+    }
+
+    @Transactional
+    public PreferenceChatResponse chat(long userId, String message) {
+        String sourceText = message.trim();
+        AiClient.PreferenceExtractResponse response = aiClient.extractPreferences(List.of(sourceText));
+        if (response.reply() == null || response.reply().isBlank() || response.extractedPreferences() == null) {
+            throw invalidAiResponse();
+        }
+        for (AiClient.ExtractedPreference extracted : response.extractedPreferences()) {
+            if (PreferenceMappingType.UNMAPPED.name().equals(extracted.mappingType())) {
+                continue;
+            }
+            validateExtractedPreference(extracted);
+            upsert(userId, new PreferenceUpsertCommand(
+                    extracted.vocabularyCode(), extracted.rawValue(),
+                    PreferenceSentiment.valueOf(extracted.sentiment()),
+                    PreferenceStrength.valueOf(extracted.strength()),
+                    PreferenceMappingType.valueOf(extracted.mappingType()), sourceText
+            ));
+        }
+        return new PreferenceChatResponse(response.reply(), findAll(userId).stream().map(UserPreferenceResponse::from).toList());
+    }
+
+    private void validateExtractedPreference(AiClient.ExtractedPreference extracted) {
+        try {
+            if (extracted.vocabularyCode() == null || extracted.rawValue() == null || extracted.rawValue().isBlank()
+                    || extracted.rawValue().length() > 255) {
+                throw new IllegalArgumentException();
+            }
+            PreferenceSentiment.valueOf(extracted.sentiment());
+            PreferenceStrength.valueOf(extracted.strength());
+            if (PreferenceMappingType.valueOf(extracted.mappingType()) == PreferenceMappingType.UNMAPPED) {
+                throw new IllegalArgumentException();
+            }
+        } catch (RuntimeException exception) {
+            throw invalidAiResponse();
+        }
+    }
+
+    private BusinessException invalidAiResponse() {
+        return new BusinessException("AI_RESPONSE_INVALID", "AI 응답 형식이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY);
     }
 }

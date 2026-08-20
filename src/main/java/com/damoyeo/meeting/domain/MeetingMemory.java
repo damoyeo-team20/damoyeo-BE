@@ -12,6 +12,8 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Collections;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -40,11 +42,11 @@ public class MeetingMemory {
 
     public MeetingMemory(Meeting meeting, Map<String, Object> memory) {
         this.meeting = meeting;
-        this.memory = Map.copyOf(memory);
+        this.memory = immutableCopy(memory);
     }
 
     public void update(Map<String, Object> memory) {
-        this.memory = Map.copyOf(memory);
+        this.memory = immutableCopy(memory);
     }
 
     @PrePersist
@@ -67,5 +69,9 @@ public class MeetingMemory {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    private Map<String, Object> immutableCopy(Map<String, Object> memory) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(memory));
     }
 }

@@ -40,6 +40,10 @@ server:
         secure: ${SESSION_COOKIE_SECURE:false}
 
 app:
+  ai:
+    base-url: ${AI_BASE_URL:http://localhost:8000}
+    connect-timeout-ms: ${AI_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${AI_READ_TIMEOUT_MS:30000}
   oauth:
     login-success-uri: ${OAUTH_LOGIN_SUCCESS_URI:/api/auth/session}
   cors:
