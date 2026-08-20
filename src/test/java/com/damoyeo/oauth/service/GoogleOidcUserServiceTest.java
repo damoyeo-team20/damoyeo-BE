@@ -42,6 +42,7 @@ class GoogleOidcUserServiceTest {
 		when(oidcUser.getEmail()).thenReturn("tester@example.com");
 		when(oidcUser.getEmailVerified()).thenReturn(true);
 		when(oidcUser.getFullName()).thenReturn("OAuth Tester");
+		when(oidcUser.getPicture()).thenReturn("https://example.com/profile.png");
 		when(userRepository.findByEmail("tester@example.com")).thenReturn(Optional.empty());
 	}
 
@@ -58,6 +59,7 @@ class GoogleOidcUserServiceTest {
 		assertThat(captor.getValue().getGoogleSubject()).isEqualTo("google-subject");
 		assertThat(captor.getValue().getEmail()).isEqualTo("tester@example.com");
 		assertThat(captor.getValue().getNickname()).isEqualTo("OAuth Tester");
+		assertThat(captor.getValue().getProfileImageUrl()).isEqualTo("https://example.com/profile.png");
 	}
 
 	@Test
@@ -69,6 +71,7 @@ class GoogleOidcUserServiceTest {
 
 		assertThat(existingUser.getEmail()).isEqualTo("tester@example.com");
 		assertThat(existingUser.getNickname()).isEqualTo("OAuth Tester");
+		assertThat(existingUser.getProfileImageUrl()).isEqualTo("https://example.com/profile.png");
 		verify(userRepository).save(existingUser);
 	}
 

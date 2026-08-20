@@ -72,7 +72,9 @@ public class AuthController {
 				savedUser.getGoogleSubject(),
 				savedUser.getEmail(),
 				savedUser.getNickname(),
-				user.getClaimAsString("picture"),
+				savedUser.getProfileImageUrl() != null
+					? savedUser.getProfileImageUrl()
+					: user.getClaimAsString("picture"),
 				savedUser.isOnboardingCompleted()
 			),
 			scopes.contains(CALENDAR_EVENTS_SCOPE) && scopes.contains(CALENDAR_FREE_BUSY_SCOPE),

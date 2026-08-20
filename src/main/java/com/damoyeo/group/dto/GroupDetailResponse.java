@@ -54,6 +54,7 @@ public record GroupDetailResponse(
             Long memberId,
             Long userId,
             String nickname,
+            String profileImageUrl,
             GroupMemberRole role,
             long preferenceCount,
             boolean calendarConnected
@@ -63,6 +64,7 @@ public record GroupDetailResponse(
                     member.getId(),
                     member.getUserId(),
                     user == null ? null : user.getNickname(),
+                    user == null ? null : user.getProfileImageUrl(),
                     member.getRole(),
                     preferenceCount,
                     calendarConnected

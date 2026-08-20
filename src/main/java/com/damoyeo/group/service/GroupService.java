@@ -160,6 +160,7 @@ public class GroupService {
                 .map(member -> new GroupSummaryResponse.MemberResponse(
                         member.getUserId(),
                         users.get(member.getUserId()) == null ? null : users.get(member.getUserId()).getNickname(),
+                        users.get(member.getUserId()) == null ? null : users.get(member.getUserId()).getProfileImageUrl(),
                         member.getRole()
                 ))
                 .toList();

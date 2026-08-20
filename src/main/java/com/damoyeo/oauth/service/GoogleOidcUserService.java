@@ -22,6 +22,7 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
 	private static final int MAX_GOOGLE_SUBJECT_LENGTH = 255;
 	private static final int MAX_EMAIL_LENGTH = 320;
 	private static final int MAX_NICKNAME_LENGTH = 50;
+	private static final int MAX_PROFILE_IMAGE_URL_LENGTH = 2048;
 
 	private final UserRepository userRepository;
 	private final OAuth2UserService<OidcUserRequest, OidcUser> delegate;
@@ -63,12 +64,13 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
 		}
 
 		String nickname = normalizedNickname(oidcUser, email);
+		String profileImageUrl = normalizedProfileImageUrl(oidcUser);
 		User user = userRepository.findByGoogleSubject(googleSubject)
 			.map(existingUser -> {
-				existingUser.updateProfile(email, nickname);
+				existingUser.updateProfile(email, nickname, profileImageUrl);
 				return existingUser;
 			})
-			.orElseGet(() -> new User(googleSubject, email, nickname));
+			.orElseGet(() -> new User(googleSubject, email, nickname, profileImageUrl));
 		userRepository.save(user);
 
 		return oidcUser;
@@ -86,6 +88,15 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
 			? oidcUser.getFullName().trim()
 			: email.substring(0, email.contains("@") ? email.indexOf('@') : email.length());
 		return nickname.substring(0, Math.min(nickname.length(), MAX_NICKNAME_LENGTH));
+	}
+
+	private String normalizedProfileImageUrl(OidcUser oidcUser) {
+		String picture = oidcUser.getPicture();
+		if (!StringUtils.hasText(picture)) {
+			return null;
+		}
+		String normalized = picture.trim();
+		return normalized.substring(0, Math.min(normalized.length(), MAX_PROFILE_IMAGE_URL_LENGTH));
 	}
 
 	private OAuth2AuthenticationException authenticationException(String code, String message) {

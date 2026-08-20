@@ -15,7 +15,7 @@ public record GroupSummaryResponse(
         ActiveMeetingResponse activeMeeting,
         Instant createdAt
 ) {
-    public record MemberResponse(Long userId, String nickname, GroupMemberRole role) {
+    public record MemberResponse(Long userId, String nickname, String profileImageUrl, GroupMemberRole role) {
     }
 
     public record LastMeetingResponse(Instant confirmedStartAt, String region) {

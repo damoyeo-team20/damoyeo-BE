@@ -25,6 +25,9 @@ public class User extends BaseEntity {
     @Column(length = 50)
     private String nickname;
 
+    @Column(name = "profile_image_url", length = 2048)
+    private String profileImageUrl;
+
     @Column(name = "onboarding_completed", nullable = false)
     private boolean onboardingCompleted;
 
@@ -32,15 +35,21 @@ public class User extends BaseEntity {
     }
 
     public User(String googleSubject, String email, String nickname) {
+        this(googleSubject, email, nickname, null);
+    }
+
+    public User(String googleSubject, String email, String nickname, String profileImageUrl) {
         this.googleSubject = googleSubject;
         this.email = email;
         this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
         this.onboardingCompleted = false;
     }
 
-    public void updateProfile(String email, String nickname) {
+    public void updateProfile(String email, String nickname, String profileImageUrl) {
         this.email = email;
         this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
     }
 
     public void completeOnboarding() {
@@ -61,6 +70,10 @@ public class User extends BaseEntity {
 
     public String getNickname() {
         return nickname;
+    }
+
+    public String getProfileImageUrl() {
+        return profileImageUrl;
     }
 
     public boolean isOnboardingCompleted() {
